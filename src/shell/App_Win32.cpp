@@ -63,7 +63,7 @@ public:
       {
          if (GetLastError () == ERROR_ALREADY_EXISTS)
          {
-            if ((hWnd = FindWindowA (PRODUCT_WINDOW_CLASS, NULL)) != NULL
+            if ((hWnd = FindWindowA (PRODUCT_WINDOW_CLASS, NULL)) != NULL)
                PostMessageA (hWnd, WM_LAUNCH, 0, 0);
 
             CloseHandle (m_hMutex);
