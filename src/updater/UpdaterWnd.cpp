@@ -3,6 +3,7 @@
 #include "pch.h"
 
 #include "updater/UpdaterWnd.h"
+#include "Brand.h"
 
 using namespace RUBIDIUM;
 
@@ -46,7 +47,7 @@ std::string UPDATER_NATIVE::SetupExePath () const
    if (GetModuleFileNameA (nullptr, szPath, MAX_PATH))
    {
       std::string sExeDir = fs::path (szPath).parent_path ().string ();
-      std::string sCandidate = sExeDir + "\\RubidiumSetup.exe";
+      std::string sCandidate = sExeDir + "\\" PRODUCT_SETUP_EXE;
       if (fs::exists (sCandidate))
          sResult = sCandidate;
    }

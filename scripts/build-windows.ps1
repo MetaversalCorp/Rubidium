@@ -104,6 +104,8 @@ if ($modeCount -gt 1) {
 
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RubidiumDir = Resolve-Path (Join-Path $ScriptDir '..')
+. (Join-Path $RubidiumDir 'branding\Read-Product.ps1')
+$Product = Get-ProductIdentity $RubidiumDir
 $SneezeDir  = if ($env:SNEEZE_DIR) { $env:SNEEZE_DIR }
               else { Resolve-Path (Join-Path $RubidiumDir '../Sneeze') }
 
@@ -410,6 +412,6 @@ if ($Fresh -or $RubidiumMode) {
          exit 1
       }
       Write-Host "==> Rubidium Windows build complete ($Config)"
-      Write-Host "    Rubidium.exe -> $RubidiumInstallDir\bin"
+      Write-Host "    $($Product.Name).exe -> $RubidiumInstallDir\bin"
    }
 }

@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "version.h"
+#include "Brand.h"
 #include "resource.h"
 
 IDI_ICON1    ICON "../pkg/logo.ico"
@@ -30,13 +31,13 @@ BEGIN
    BEGIN
       BLOCK "040904B0"
       BEGIN
-         VALUE "CompanyName",      "Metaversal Corporation"
-         VALUE "FileDescription",  "Rubidium Metaverse Browser"
+         VALUE "CompanyName",      PRODUCT_COMPANY
+         VALUE "FileDescription",  PRODUCT_DESCRIPTION
          VALUE "FileVersion",      RUBIDIUM_VERSION
-         VALUE "InternalName",     "Rubidium"
+         VALUE "InternalName",     PRODUCT_NAME
          VALUE "LegalCopyright",   "Copyright 2026 Metaversal Corporation. All rights reserved."
-         VALUE "OriginalFilename", "Rubidium.exe"
-         VALUE "ProductName",      "Rubidium"
+         VALUE "OriginalFilename", PRODUCT_EXE
+         VALUE "ProductName",      PRODUCT_NAME
          VALUE "ProductVersion",   RUBIDIUM_VERSION
       END
    END

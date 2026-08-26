@@ -3,6 +3,7 @@
 
 #include "release_notes/ReleaseNotesRml.h"
 #include "version.h"
+#include "Brand.h"
 
 using namespace RUBIDIUM;
 
@@ -10,7 +11,7 @@ static const char* g_szLogLevels[LOGGER::kLOGLEVEL_COUNT] = { "trace", "info", "
 
 static void GetRubidiumPath (std::string& sPath)
 {
-   sPath += "/Metaversal/Rubidium";
+   sPath += "/" PRODUCT_APPDATA_DIR;
    std::filesystem::create_directories (sPath);
 }
 
@@ -31,7 +32,7 @@ APP::APP (std::string sHomePath, ILOGGER* pILogger) :
    nlohmann::json jParsed;
    nlohmann::json jDefaults = {
       {
-         "home", "https://cdn.rp1.com/fabric/rubidium.msf"
+         "home", PRODUCT_HOME_URL
       },
       {
          "window", {

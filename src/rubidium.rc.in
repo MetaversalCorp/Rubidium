@@ -17,13 +17,13 @@ BEGIN
    BEGIN
       BLOCK "040904B0"
       BEGIN
-         VALUE "CompanyName",      "Metaversal Corporation"
-         VALUE "FileDescription",  "Rubidium Metaverse Browser"
+         VALUE "CompanyName",      "@PRODUCT_COMPANY@"
+         VALUE "FileDescription",  "@PRODUCT_DESCRIPTION@"
          VALUE "FileVersion",      "@RUBIDIUM_VER@"
-         VALUE "InternalName",     "Rubidium"
+         VALUE "InternalName",     "@PRODUCT_NAME@"
          VALUE "LegalCopyright",   "Copyright 2026 Metaversal Corporation. All rights reserved."
-         VALUE "OriginalFilename", "Rubidium.exe"
-         VALUE "ProductName",      "Rubidium"
+         VALUE "OriginalFilename", "@PRODUCT_NAME@.exe"
+         VALUE "ProductName",      "@PRODUCT_NAME@"
          VALUE "ProductVersion",   "@RUBIDIUM_VER@"
       END
    END

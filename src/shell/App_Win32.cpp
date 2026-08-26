@@ -6,6 +6,7 @@
 
 #include "logger/ILogger.h"
 #include "version.h"
+#include "Brand.h"
 #include "Resource.h"
 #include "WinUtils.h"
 #include "rmlui_sdl/RmlUi_SDL_Platform.h"
@@ -58,11 +59,11 @@ public:
    {
       HWND hWnd;
 
-      if ((m_hMutex = CreateMutexA (NULL, TRUE, "Metaversal.Rubidium.SingleInstance")) != NULL)
+      if ((m_hMutex = CreateMutexA (NULL, TRUE, PRODUCT_MUTEX)) != NULL)
       {
          if (GetLastError () == ERROR_ALREADY_EXISTS)
          {
-            if ((hWnd = FindWindowA ("RubidiumFrameClass", NULL)) != NULL)
+            if ((hWnd = FindWindowA (PRODUCT_WINDOW_CLASS, NULL)) != NULL
                PostMessageA (hWnd, WM_LAUNCH, 0, 0);
 
             CloseHandle (m_hMutex);
@@ -216,7 +217,7 @@ public:
             if (InitCommonControlsEx (&iccex) != FALSE)
             {
                WndClassExW.cbSize = sizeof (WNDCLASSEXW);
-               WndClassExW.lpszClassName = L"RubidiumFrameClass";
+               WndClassExW.lpszClassName = PRODUCT_WINDOW_CLASS_W;
                WndClassExW.lpfnWndProc = APPFRAME_NATIVE::WndProc;
                WndClassExW.style = CS_HREDRAW | CS_VREDRAW;
                WndClassExW.hInstance = m_hInstance;
@@ -232,7 +233,7 @@ public:
                   for (nLevel = 0; nLevel < LOGGER::kLOGLEVEL_COUNT && sLevel.compare (g_szLogLevels[nLevel]) != 0; nLevel++);
                   m_pApp->Logger ()->LogLevel (static_cast<LOGGER::eLOGLEVEL> (nLevel));
 
-                  m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Info, "App", "Rubidium " + std::string (RUBIDIUM_VERSION));
+                  m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Info, "App", std::string (PRODUCT_NAME) + " " + std::string (RUBIDIUM_VERSION));
 
                   m_pSneeze = new SNEEZE::ENGINE (m_pApp);
 
@@ -383,9 +384,9 @@ public:
       int nResult;
 
       if (bAvailable)
-         nResult = MessageBoxA (hWndParent, "An update is available. Would you like to install the update?", "Rubidium", MB_YESNO | MB_ICONINFORMATION);
+         nResult = MessageBoxA (hWndParent, "An update is available. Would you like to install the update?", PRODUCT_NAME, MB_YESNO | MB_ICONINFORMATION);
       else 
-         nResult = MessageBoxA (hWndParent, "No Update Available", "Rubidium", MB_OK | MB_ICONINFORMATION);
+         nResult = MessageBoxA (hWndParent, "No Update Available", PRODUCT_NAME, MB_OK | MB_ICONINFORMATION);
 
       if (nResult == IDYES)
       {

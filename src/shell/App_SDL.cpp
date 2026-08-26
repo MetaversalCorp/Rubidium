@@ -15,6 +15,7 @@
 
 #include "logger/ILogger.h"
 #include "version.h"
+#include "Brand.h"
 
 #include <atomic>
 #include <cstdlib>
@@ -524,7 +525,7 @@ public:
       for (nLevel = 0; nLevel < LOGGER::kLOGLEVEL_COUNT && sLevel.compare (g_szLogLevels[nLevel]) != 0; nLevel++);
       m_pApp->Logger ()->LogLevel (static_cast<LOGGER::eLOGLEVEL> (nLevel));
 
-      m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Info, "App", "Rubidium " + std::string (RUBIDIUM_VERSION));
+      m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Info, "App", std::string (PRODUCT_NAME) + " " + std::string (RUBIDIUM_VERSION));
 
       m_pSneeze = new SNEEZE::ENGINE (m_pApp);
 
@@ -669,12 +670,12 @@ public:
          if (nPending == 1)
          {
             std::string sMsg   = "An update is available.";
-            std::string sTitle = "Rubidium";
+            std::string sTitle = PRODUCT_NAME;
             eResult = onUpdaterPrompt (sMsg, sTitle);
          }
          else
          {
-            bool bOk = SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_INFORMATION, "Rubidium", "No Update Available", static_cast<SDL_Window*> (m_pAppFrame_Active ? m_pAppFrame_Active->NativeWindow () : nullptr));
+            bool bOk = SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_INFORMATION, PRODUCT_NAME, "No Update Available", static_cast<SDL_Window*> (m_pAppFrame_Active ? m_pAppFrame_Active->NativeWindow () : nullptr));
             if (!bOk)
                m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "Updater", std::string ("SDL_ShowSimpleMessageBox failed: ") + SDL_GetError ());
          }

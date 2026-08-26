@@ -28,9 +28,7 @@
 #include <mach-o/dyld.h>
 #endif
 
-#ifndef RUBIDIUM_CDN_URL
-#define RUBIDIUM_CDN_URL "https://cdn.rp1.com/rubidium/"
-#endif
+#include "Brand.h"
 
 #ifndef RUBIDIUM_PLATFORM
 #define RUBIDIUM_PLATFORM "windows-x64"
@@ -156,7 +154,7 @@ static HWND CreateProgressDialog ()
    pWc.hInstance      = GetModuleHandleA (nullptr);
    pWc.hCursor        = LoadCursor (nullptr, IDC_ARROW);
    pWc.hbrBackground  = (HBRUSH)(COLOR_WINDOW + 1);
-   pWc.lpszClassName  = "RubidiumSetupClass";
+   pWc.lpszClassName  = PRODUCT_SETUP_CLASS;
    pWc.hIcon          = LoadIconA (pWc.hInstance, "IDI_ICON1");
    RegisterClassExA (&pWc);
 
@@ -166,7 +164,7 @@ static HWND CreateProgressDialog ()
    int nWinH = 210;
 
    g_hDialog = CreateWindowExA (
-      0, "RubidiumSetupClass", "Rubidium Setup",
+      0, PRODUCT_SETUP_CLASS, PRODUCT_SETUP_TITLE,
       WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
       (nScreenW - nWinW) / 2, (nScreenH - nWinH) / 2,
       nWinW, nWinH,
@@ -338,7 +336,7 @@ static std::string GetAppDataDir ()
 }
 static void GetRubidiumPath (std::string& sPath)
 {
-   sPath += "/Metaversal/Rubidium";
+   sPath += "/" PRODUCT_APPDATA_DIR;
    std::filesystem::create_directories (sPath);
 }
 
@@ -360,7 +358,7 @@ static void Log (const char* szFormat, ...)
 {
    static std::string sLogPath;
    if (sLogPath.empty ())
-      sLogPath = GetUpdatesDir () + "/RubidiumSetup.log";
+      sLogPath = GetUpdatesDir () + "/" PRODUCT_SETUP_LOG;
 
    FILE* pFile = std::fopen (sLogPath.c_str (), "a");
    if (pFile)
@@ -505,7 +503,7 @@ static bool ParseManifest (const std::string& sJson, const std::string& sPlatfor
    }
    catch (const nlohmann::json::exception& e)
    {
-      std::fprintf (stderr, "RubidiumSetup: manifest parse error -- %s\n", e.what ());
+      std::fprintf (stderr, "%s: manifest parse error -- %s\n", PRODUCT_NAME_SETUP, e.what ());
    }
 
    return bOk;
@@ -685,7 +683,7 @@ static bool ApplyLinuxTarball (const std::string& sTarball)
 {
    std::string     sBinDir      = GetSetupExeDir ();                            // <root>/bin
    std::string     sInstallRoot = fs::path (sBinDir).parent_path ().string (); // <root>
-   std::string     sLogPath     = GetUpdatesDir () + "/RubidiumSetup.log";
+   std::string     sLogPath     = GetUpdatesDir () + "/" PRODUCT_SETUP_LOG;
    std::error_code ec;
 
    // Extract into a scratch dir first, then normalize: the tarball may be rooted
@@ -739,10 +737,10 @@ static bool ApplyLinuxTarball (const std::string& sTarball)
       // truncated in place (ETXTBSY). Rename them aside first -- on Linux the dir
       // entry moves immediately and any live inode survives until its process
       // exits -- so the copy below writes fresh files at the original paths.
-      std::string sSelf       = sBinDir + "/RubidiumSetup";
-      std::string sSelfOld     = sBinDir + "/RubidiumSetup.old";
-      std::string sRubidium     = sBinDir + "/Rubidium";
-      std::string sRubidiumOld  = sBinDir + "/Rubidium.old";
+      std::string sSelf       = sBinDir + "/" PRODUCT_NAME_SETUP;
+      std::string sSelfOld     = sBinDir + "/" PRODUCT_NAME_SETUP ".old";
+      std::string sRubidium     = sBinDir + "/" PRODUCT_NAME;
+      std::string sRubidiumOld  = sBinDir + "/" PRODUCT_NAME ".old";
 
       fs::remove (sSelfOld,    ec);
       fs::remove (sRubidiumOld, ec);
@@ -789,11 +787,11 @@ static bool ApplyMacDmg (const std::string& sDmg)
    fs::path    AppPath     = MacOsDir.parent_path ().parent_path ();    // .../Rubidium.app
    fs::path    InstallDir  = AppPath.parent_path ();                    // .../<install>
 
-   std::string sLogPath  = GetUpdatesDir () + "/RubidiumSetup.log";
+   std::string sLogPath  = GetUpdatesDir () + "/" PRODUCT_SETUP_LOG;
    std::string sMountDir  = GetUpdatesDir () + "/mnt";
 
-   fs::path    NewApp = InstallDir / ".Rubidium.app.new";
-   fs::path    OldApp = InstallDir / ".Rubidium.app.old";
+   fs::path    NewApp = InstallDir / (std::string (".") + PRODUCT_NAME + ".app.new");
+   fs::path    OldApp = InstallDir / (std::string (".") + PRODUCT_NAME + ".app.old");
 
    std::error_code ec;
 
@@ -918,7 +916,7 @@ static int RunFreshInstall ()
    BeginStep (STEP_MANIFEST);
 #endif
 
-   std::string sManifestUrl = std::string (RUBIDIUM_CDN_URL) + "manifest.json";
+   std::string sManifestUrl = std::string (PRODUCT_CDN_URL) + "manifest.json";
    std::string sPlatform    = RUBIDIUM_PLATFORM;
    std::string sDestPath;
 
@@ -942,14 +940,14 @@ static int RunFreshInstall ()
    {
 #ifdef _WIN32
       MessageBoxA (g_hDialog, "Could not find a release for this platform.",
-         "Rubidium Setup", MB_OK | MB_ICONERROR);
+         PRODUCT_SETUP_TITLE, MB_OK | MB_ICONERROR);
 #endif
    }
 
    if (bOk)
    {
 #ifdef _WIN32
-      std::wstring sLabel = L"Downloading Rubidium ";
+      std::wstring sLabel = std::wstring (L"Downloading ") + PRODUCT_NAME_W + L" ";
       for (char c : sVersion)
          sLabel += (wchar_t)c;
       SetStepText (STEP_DOWNLOAD, sLabel.c_str ());
@@ -963,7 +961,7 @@ static int RunFreshInstall ()
       if (nLastSlash != std::string::npos)
          sFilename = sDownloadUrl.substr (nLastSlash + 1);
       else
-         sFilename = "Rubidium-setup.exe";
+         sFilename = std::string (PRODUCT_NAME) + "-setup.exe";
 
       sDestPath = sUpdatesDir + "/" + sFilename;
       bOk = DownloadFile (sDownloadUrl, sDestPath, true);
@@ -998,7 +996,7 @@ static int RunFreshInstall ()
    {
 #ifdef _WIN32
       MessageBoxA (g_hDialog, "Download failed or verification error.",
-         "Rubidium Setup", MB_OK | MB_ICONERROR);
+         PRODUCT_SETUP_TITLE, MB_OK | MB_ICONERROR);
 #endif
       fs::remove (sDestPath);
    }
@@ -1070,7 +1068,7 @@ static int RunCheck (const std::string& sCurrentVersion, bool bForce)
    {
       curl_global_init (CURL_GLOBAL_DEFAULT);
 
-      std::string sManifestUrl = std::string (RUBIDIUM_CDN_URL) + "manifest.json";
+      std::string sManifestUrl = std::string (PRODUCT_CDN_URL) + "manifest.json";
       std::string sPlatform    = RUBIDIUM_PLATFORM;
       Log ("check: manifest url=%s", sManifestUrl.c_str ());
 
@@ -1110,7 +1108,7 @@ static int RunCheck (const std::string& sCurrentVersion, bool bForce)
          if (nLastSlash != std::string::npos)
             sFilename = sDownloadUrl.substr (nLastSlash + 1);
          else
-            sFilename = "Rubidium-update.exe";
+            sFilename = std::string (PRODUCT_NAME) + "-update.exe";
 
          std::string sDestPath = sUpdatesDir + "/" + sFilename;
 
@@ -1238,7 +1236,7 @@ static int RunApply ()
       // logger thread blocks flushing to that terminal -- the app then hangs
       // right after "Shutdown complete" (the join in DestroyLogger never returns).
       std::string sRelaunch = "setsid \"" + GetSetupExeDir () +
-                              "/Rubidium\" </dev/null >/dev/null 2>&1 &";
+                              "/" + PRODUCT_NAME + "\" </dev/null >/dev/null 2>&1 &";
       std::system (sRelaunch.c_str ());
 #endif
       nExitCode = 0;

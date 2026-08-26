@@ -4,6 +4,17 @@ cmake_minimum_required (VERSION 3.20)
 file (STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" RUBIDIUM_VER)
 set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION")
 
+# Product identity. Artemis overlays branding/Product.cmake; this tree's
+# CMake target names, namespace, and file layout stay Rubidium.
+set (RUBIDIUM_BRANDING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../branding")
+include ("${RUBIDIUM_BRANDING_DIR}/Product.cmake")
+set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+   "${RUBIDIUM_BRANDING_DIR}/Product.cmake")
+set (RUBIDIUM_CDN_URL "${PRODUCT_CDN_URL}" CACHE STRING
+   "CDN base URL for manifest and installers")
+# Command-line -DRUBIDIUM_CDN_URL=... wins via the cache; feed Brand.h from it.
+set (PRODUCT_CDN_URL "${RUBIDIUM_CDN_URL}")
+
 # Limit multi-config generators (VS, Xcode, Ninja Multi-Config) to the two
 # configs we actually support. Dropping MinSizeRel + RelWithDebInfo is
 # required because the deps trees are only built for debug and release;
@@ -59,6 +70,11 @@ configure_file (
 configure_file (
    "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/setup.rc.in"
    "${CMAKE_CURRENT_BINARY_DIR}/setup.rc"
+   @ONLY
+)
+configure_file (
+   "${RUBIDIUM_BRANDING_DIR}/Brand.h.in"
+   "${CMAKE_CURRENT_BINARY_DIR}/Brand.h"
    @ONLY
 )
 
@@ -731,6 +747,8 @@ else ()
    )
 endif ()
 
+set_target_properties (Rubidium PROPERTIES OUTPUT_NAME "${PRODUCT_NAME}")
+
 if (WIN32)
    set_target_properties (Rubidium PROPERTIES WIN32_EXECUTABLE TRUE)
 endif ()
@@ -739,12 +757,12 @@ if (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
    set_target_properties (Rubidium PROPERTIES
       MACOSX_BUNDLE TRUE
       MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/macos/Info.plist"
-      MACOSX_BUNDLE_GUI_IDENTIFIER "com.rp1.Rubidium"
+      MACOSX_BUNDLE_GUI_IDENTIFIER "${PRODUCT_BUNDLE_ID}"
       MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
       MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-      MACOSX_BUNDLE_BUNDLE_NAME "Rubidium"
+      MACOSX_BUNDLE_BUNDLE_NAME "${PRODUCT_NAME}"
       MACOSX_BUNDLE_ICON_FILE "AppIcon"
-      XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.rp1.Rubidium"
+      XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PRODUCT_BUNDLE_ID}"
    )
 endif ()
 
@@ -752,10 +770,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
    set_target_properties (Rubidium PROPERTIES
       MACOSX_BUNDLE TRUE
       MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/ios/Info.plist"
-      MACOSX_BUNDLE_GUI_IDENTIFIER "com.rp1.Rubidium"
+      MACOSX_BUNDLE_GUI_IDENTIFIER "${PRODUCT_BUNDLE_ID}"
       MACOSX_BUNDLE_BUNDLE_VERSION "1"
       MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-      XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.rp1.Rubidium"
+      XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${PRODUCT_BUNDLE_ID}"
       RESOURCE "${IOS_RESOURCES}"
    )
 endif ()
@@ -822,10 +840,7 @@ elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
    endif ()
 endif ()
 
-set (RUBIDIUM_CDN_URL "https://cdn.rp1.com/rubidium/" CACHE STRING "CDN base URL for manifest and installers")
-
 target_compile_definitions (Rubidium PRIVATE
-   RUBIDIUM_CDN_URL="${RUBIDIUM_CDN_URL}"
    RUBIDIUM_PLATFORM="${RUBIDIUM_PLATFORM}"
    RMLUI_SDL_VERSION_MAJOR=3
    $<$<BOOL:${WIN32}>:RUBIDIUM_PLATFORM_WINDOWS>
@@ -864,11 +879,11 @@ add_executable (RubidiumSetup
 target_include_directories (RubidiumSetup PRIVATE
    ${CURL_INCLUDE}
    ${NLOHMANN_JSON_INCLUDE}
+   ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_compile_definitions (RubidiumSetup PRIVATE
    CURL_STATICLIB
-   RUBIDIUM_CDN_URL="${RUBIDIUM_CDN_URL}"
    RUBIDIUM_PLATFORM="${RUBIDIUM_PLATFORM}"
 )
 
@@ -882,6 +897,7 @@ if (WIN32)
    )
    set_target_properties (RubidiumSetup PROPERTIES
       WIN32_EXECUTABLE TRUE
+      OUTPUT_NAME "${PRODUCT_NAME_SETUP}"
    )
 elseif (APPLE)
    find_library (SECURITY_FW Security REQUIRED)
@@ -898,6 +914,8 @@ else ()
    target_link_libraries (RubidiumSetup PRIVATE
       ${BORINGSSL_SSL_LIB} ${BORINGSSL_CRYPTO_LIB} pthread dl)
 endif ()
+
+set_target_properties (RubidiumSetup PROPERTIES OUTPUT_NAME "${PRODUCT_NAME_SETUP}")
 
 # BoringSSL curl (macOS/Linux) has no OS trust store. Compile Sneeze's
 # generated CA bundle directly into RubidiumSetup (it does not link Sneeze.lib).
@@ -1381,11 +1399,11 @@ endif ()\n\
 set (CPACK_PACKAGE_DIRECTORY \"${_cpack_build_root}/install/\${_cfg_lc}/pkg\")\n")
 set (CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_BINARY_DIR}/CPackProjectConfig.cmake")
 set (CPACK_PACKAGE_DIRECTORY "${_cpack_build_root}/install/${RUBIDIUM_CONFIG_LC}/pkg")
-set (CPACK_PACKAGE_NAME "Rubidium")
+set (CPACK_PACKAGE_NAME "${PRODUCT_NAME}")
 set (CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set (CPACK_PACKAGE_VENDOR "Metaversal Corporation")
-set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "Rubidium Metaverse Browser")
-set (CPACK_PACKAGE_INSTALL_DIRECTORY "Rubidium")
+set (CPACK_PACKAGE_VENDOR "${PRODUCT_COMPANY}")
+set (CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PRODUCT_DESCRIPTION}")
+set (CPACK_PACKAGE_INSTALL_DIRECTORY "${PRODUCT_NAME}")
 
 # Use the same platform slug (windows-x64, linux-x64, macos-arm64, ...) that
 # the build scripts already use for every other path in the project. Without
@@ -1398,27 +1416,27 @@ if (WIN32)
    set (CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/LICENSE.txt")
    set (CPACK_CLEAN_STAGING_DIRECTORY OFF)
    set (CPACK_GENERATOR "NSIS")
-   set (CPACK_NSIS_PACKAGE_NAME "Rubidium")
-   set (CPACK_NSIS_DISPLAY_NAME "Rubidium")
+   set (CPACK_NSIS_PACKAGE_NAME "${PRODUCT_NAME}")
+   set (CPACK_NSIS_DISPLAY_NAME "${PRODUCT_NAME}")
    set (CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64\\\\Metaversal")
    set (CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
    set (CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/logo.ico")
    set (CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/logo.ico")
-   set (CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\Rubidium.exe")
+   set (CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\${PRODUCT_NAME}.exe")
 
    set (CPACK_NSIS_CREATE_ICONS_EXTRA
-      "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Rubidium.lnk' '$INSTDIR\\\\bin\\\\Rubidium.exe'\n\
-      CreateShortCut '$DESKTOP\\\\Rubidium.lnk' '$INSTDIR\\\\bin\\\\Rubidium.exe'"
+      "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\${PRODUCT_NAME}.lnk' '$INSTDIR\\\\bin\\\\${PRODUCT_NAME}.exe'\n\
+      CreateShortCut '$DESKTOP\\\\${PRODUCT_NAME}.lnk' '$INSTDIR\\\\bin\\\\${PRODUCT_NAME}.exe'"
    )
    set (CPACK_NSIS_DELETE_ICONS_EXTRA
-      "Delete '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Rubidium.lnk'\n\
-      Delete '$DESKTOP\\\\Rubidium.lnk'"
+      "Delete '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\${PRODUCT_NAME}.lnk'\n\
+      Delete '$DESKTOP\\\\${PRODUCT_NAME}.lnk'"
    )
 
-   set (CPACK_NSIS_MUI_FINISHPAGE_RUN "Rubidium.exe")
+   set (CPACK_NSIS_MUI_FINISHPAGE_RUN "${PRODUCT_NAME}.exe")
 elseif (APPLE)
    set (CPACK_GENERATOR "DragNDrop")
-   set (CPACK_DMG_VOLUME_NAME "Rubidium ${PROJECT_VERSION}")
+   set (CPACK_DMG_VOLUME_NAME "${PRODUCT_NAME} ${PROJECT_VERSION}")
    # Do not embed pkg/LICENSE.txt as a DMG SLA (CPack CMP0133 defaults SLA ON when
    # CPACK_RESOURCE_FILE_LICENSE is set). SLA mounting breaks headless CI hdiutil
    # attach and floods logs with the full terms text. NSIS still uses LICENSE.txt.

@@ -47,6 +47,7 @@
     <RubidiumDepsRoot>$(RubidiumRoot)\deps\builds\windows-x64</RubidiumDepsRoot>
     <SneezeDepsRoot>$(SneezeRoot)\deps\builds\windows-x64</SneezeDepsRoot>
   </PropertyGroup>
+  <Import Project="$(RubidiumRoot)\branding\Brand.props" />
   <PropertyGroup>
     <CfgLower Condition="'$(Configuration)'=='Debug'">debug</CfgLower>
     <CfgLower Condition="'$(Configuration)'=='Release'">release</CfgLower>
@@ -57,7 +58,7 @@
   <PropertyGroup>
     <OutDir>$(RubidiumBuildRoot)\install\$(CfgLower)\bin\</OutDir>
     <IntDir>$(RubidiumBuildRoot)\build\Rubidium.dir\$(Configuration)\</IntDir>
-    <TargetName>Rubidium</TargetName>
+    <TargetName>$(ProductName)</TargetName>
     <TargetExt>.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
@@ -81,7 +82,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";RMLUI_SDL_VERSION_MAJOR=3;RUBIDIUM_PLATFORM_WINDOWS;CURL_STATICLIB;RMLUI_STATIC_LIB;SNEEZE_VERSION="0.0.0";SNEEZE_HAS_WASM;WASM_API_EXTERN=;WASI_API_EXTERN=;ANARI_STATIC_DEFINE;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;RUBIDIUM_PLATFORM="windows-x64";RMLUI_SDL_VERSION_MAJOR=3;RUBIDIUM_PLATFORM_WINDOWS;CURL_STATICLIB;RMLUI_STATIC_LIB;SNEEZE_VERSION="0.0.0";SNEEZE_HAS_WASM;WASM_API_EXTERN=;WASI_API_EXTERN=;ANARI_STATIC_DEFINE;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
       <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
     </ClCompile>
@@ -92,13 +93,14 @@
     <Link>
       <AdditionalDependencies>$(SneezeRoot)\builds\windows-x64\install\debug\lib\Sneeze.lib;$(SneezeDepsRoot)\debug\libs\RMAP\install\lib\RMAP.lib;$(SneezeDepsRoot)\debug\libs\Map\install\lib\Map.lib;$(SneezeDepsRoot)\debug\libs\socketio\install\lib\sioclient_tls.lib;$(RubidiumDepsRoot)\debug\libs\SDL3\install\lib\SDL3-static.lib;dwmapi.lib;comctl32.lib;uxtheme.lib;$(SneezeDepsRoot)\debug\libs\ANARI-SDK\install\lib\anari_static.lib;$(SneezeDepsRoot)\debug\libs\ANARI-SDK\install\lib\anari_backend.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Tools\install\lib\SPIRV-Tools.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Tools\install\lib\SPIRV-Tools-opt.lib;$(SneezeDepsRoot)\debug\libs\curl\install\lib\libcurl-d.lib;$(SneezeDepsRoot)\debug\libs\RmlUi\install\lib\rmlui.lib;$(SneezeDepsRoot)\debug\libs\RmlUi\install\lib\rmlui_debugger.lib;$(SneezeDepsRoot)\debug\libs\FreeType\install\lib\freetyped.lib;$(SneezeDepsRoot)\debug\libs\fastgltf\install\lib\fastgltf.lib;$(SneezeDepsRoot)\debug\libs\boringssl\install\lib\ssl.lib;$(SneezeDepsRoot)\debug\libs\boringssl\install\lib\crypto.lib;$(SneezeDepsRoot)\debug\libs\Vox\install\lib\vox.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Cross\install\lib\spirv-cross-hlsld.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Cross\install\lib\spirv-cross-glsld.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Cross\install\lib\spirv-cross-cored.lib;d3d12.lib;dxgi.lib;d3dcompiler.lib;$(SneezeDepsRoot)\debug\libs\Wasmtime\install\lib\wasmtime.dll.lib;$(SneezeDepsRoot)\debug\libs\OpenXR-SDK\install\lib\openxr_loaderd.lib;ws2_32.lib;userenv.lib;ntdll.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;kernel32.lib;user32.lib;gdi32.lib;winmm.lib;imm32.lib;ole32.lib;oleaut32.lib;version.lib;uuid.lib;advapi32.lib;setupapi.lib;shell32.lib;dinput8.lib;winspool.lib;comdlg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDataBaseFile>$(OutDir)Rubidium.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>$(OutDir)$(TargetName).pdb</ProgramDataBaseFile>
       <SubSystem>Windows</SubSystem>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
     </Link>
     <PreBuildEvent>
-      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
-      <Message>Generating version.h from VERSION</Message>
+      <Command>powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-BrandHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)Brand.h"
+powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
+      <Message>Generating Brand.h and version.h</Message>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>copy /Y "$(SneezeDepsRoot)\debug\libs\Wasmtime\install\lib\wasmtime.dll" "$(OutDir)"
@@ -126,7 +128,7 @@ xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";RMLUI_SDL_VERSION_MAJOR=3;RUBIDIUM_PLATFORM_WINDOWS;CURL_STATICLIB;RMLUI_STATIC_LIB;SNEEZE_VERSION="0.0.0";SNEEZE_HAS_WASM;WASM_API_EXTERN=;WASI_API_EXTERN=;ANARI_STATIC_DEFINE;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;RUBIDIUM_PLATFORM="windows-x64";RMLUI_SDL_VERSION_MAJOR=3;RUBIDIUM_PLATFORM_WINDOWS;CURL_STATICLIB;RMLUI_STATIC_LIB;SNEEZE_VERSION="0.0.0";SNEEZE_HAS_WASM;WASM_API_EXTERN=;WASI_API_EXTERN=;ANARI_STATIC_DEFINE;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
       <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
     </ClCompile>
@@ -139,7 +141,7 @@ xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <ProgramDataBaseFile>$(OutDir)Rubidium.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>$(OutDir)$(TargetName).pdb</ProgramDataBaseFile>
       <SubSystem>Windows</SubSystem>
       <!-- RMAP.lib is built with whole-program optimization (/GL) in Release, so
            link with /LTCG to consume it without the auto-restart warning. -->
@@ -147,8 +149,9 @@ xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
     </Link>
     <PreBuildEvent>
-      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
-      <Message>Generating version.h from VERSION</Message>
+      <Command>powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-BrandHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)Brand.h"
+powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
+      <Message>Generating Brand.h and version.h</Message>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>copy /Y "$(SneezeDepsRoot)\release\libs\Wasmtime\install\lib\wasmtime.dll" "$(OutDir)"
@@ -258,6 +261,7 @@ xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
     <ClInclude Include="..\src\shell\ChromeRml.h" />
     <ClInclude Include="..\src\Utils.h" />
     <ClInclude Include="..\src\version.h.in" />
+    <ClInclude Include="..\branding\Brand.h.in" />
     <!-- shell -->
     <ClInclude Include="..\src\shell\App.h" />
     <ClInclude Include="..\src\shell\AppFrame.h" />
@@ -332,6 +336,8 @@ xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
     <None Include="..\NOTICE" />
     <None Include="..\README.md" />
     <None Include="..\VERSION" />
+    <None Include="..\branding\Product.cmake" />
+    <None Include="..\branding\Brand.props" />
   </ItemGroup>
   <!-- ===================================================================== -->
   <!-- Packaging assets (pkg/)                                                -->

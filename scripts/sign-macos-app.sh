@@ -28,6 +28,8 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../branding/read-product.sh
+. "$REPO_ROOT/branding/read-product.sh"
 ENTITLEMENTS="${RUBIDIUM_MACOS_ENTITLEMENTS:-$REPO_ROOT/pkg/macos/Rubidium.entitlements}"
 BUNDLE_COSIGN_TIMEOUT="${CODESIGN_BUNDLE_TIMEOUT_SEC:-900}"
 NOTARIZE="${RUBIDIUM_NOTARIZE_MACOS:-false}"
@@ -70,7 +72,7 @@ fi
 _codesign_args+=(--sign "$IDENTITY" "$APP")
 
 _n_mach_o=0
-for _path in "$MACOS"/*.dylib "$MACOS"/Rubidium "$MACOS"/RubidiumSetup
+for _path in "$MACOS"/*.dylib "$MACOS/$PRODUCT_NAME" "$MACOS/$PRODUCT_NAME_SETUP"
 do
    [ -f "$_path" ] || continue
    if file -b "$_path" | grep -q 'Mach-O'

@@ -4,6 +4,7 @@
 
 #include "settings_ui/SettingsRml.h"
 #include "version.h"
+#include "Brand.h"
 
 using namespace RUBIDIUM;
 
@@ -499,7 +500,7 @@ span.tick
 
    std::string HomeUrl () const
    {
-      return APPNATIVE::GetInstance ()->SettingToJSON ().value ("home", std::string ("https://cdn.rp1.com/fabric/rubidium.msf"));
+      return APPNATIVE::GetInstance ()->SettingToJSON ().value ("home", std::string (PRODUCT_HOME_URL));
    }
 
    static std::string LogoPath ()

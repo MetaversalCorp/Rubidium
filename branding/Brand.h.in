@@ -1,0 +1,27 @@
+// Copyright 2026 Metaversal Corporation. All rights reserved.
+// Generated from branding/Product.cmake -- do not edit.
+
+#ifndef RUBIDIUM_BRAND_H
+#define RUBIDIUM_BRAND_H
+
+#define PRODUCT_NAME                 "@PRODUCT_NAME@"
+#define PRODUCT_NAME_W               L"@PRODUCT_NAME@"
+#define PRODUCT_NAME_SETUP           "@PRODUCT_NAME_SETUP@"
+#define PRODUCT_EXE                  "@PRODUCT_NAME@.exe"
+#define PRODUCT_SETUP_EXE            "@PRODUCT_NAME_SETUP@.exe"
+#define PRODUCT_SETUP_LOG            "@PRODUCT_NAME_SETUP@.log"
+#define PRODUCT_DESCRIPTION          "@PRODUCT_DESCRIPTION@"
+#define PRODUCT_DESCRIPTION_SETUP    "@PRODUCT_DESCRIPTION_SETUP@"
+#define PRODUCT_COMPANY              "@PRODUCT_COMPANY@"
+#define PRODUCT_APPDATA_DIR          "@PRODUCT_APPDATA_DIR@"
+#define PRODUCT_HOME_URL             "@PRODUCT_HOME_URL@"
+#define PRODUCT_CDN_URL              "@PRODUCT_CDN_URL@"
+#define PRODUCT_WINDOW_CLASS         "@PRODUCT_WINDOW_CLASS@"
+#define PRODUCT_WINDOW_CLASS_W       L"@PRODUCT_WINDOW_CLASS@"
+#define PRODUCT_URL_POPUP_CLASS_W    L"@PRODUCT_URL_POPUP_CLASS@"
+#define PRODUCT_MUTEX                "@PRODUCT_MUTEX@"
+#define PRODUCT_BUNDLE_ID            "@PRODUCT_BUNDLE_ID@"
+#define PRODUCT_SETUP_CLASS          "@PRODUCT_SETUP_CLASS@"
+#define PRODUCT_SETUP_TITLE          "@PRODUCT_SETUP_TITLE@"
+
+#endif // RUBIDIUM_BRAND_H

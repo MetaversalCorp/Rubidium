@@ -67,8 +67,8 @@
     <Filter Include="scripts">
       <UniqueIdentifier>{F1A2B3C4-0001-0000-0000-000000000011}</UniqueIdentifier>
     </Filter>
-    <Filter Include="deps">
-      <UniqueIdentifier>{F1A2B3C4-0001-0000-0000-000000000012}</UniqueIdentifier>
+    <Filter Include="branding">
+      <UniqueIdentifier>{F1A2B3C4-0001-0000-0000-000000000013}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <!-- Source files (.cpp) -->
@@ -279,6 +279,9 @@
     </ClInclude>
     <ClInclude Include="..\src\version.h.in">
       <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\branding\Brand.h.in">
+      <Filter>branding</Filter>
     </ClInclude>
     <ClInclude Include="..\src\shell\App.h">
       <Filter>src\shell</Filter>
@@ -503,6 +506,12 @@
     </None>
     <None Include="..\scripts\commit-manifest.cmd">
       <Filter>scripts</Filter>
+    </None>
+    <None Include="..\branding\Product.cmake">
+      <Filter>branding</Filter>
+    </None>
+    <None Include="..\branding\Brand.props">
+      <Filter>branding</Filter>
     </None>
   </ItemGroup>
   <!-- deps/ -->

@@ -1,6 +1,7 @@
 // Copyright 2026 Metaversal Corporation. All rights reserved.
 
 #include <winver.h>
+#include "Brand.h"
 
 IDI_ICON1 ICON "@RUBIDIUM_PKG_DIR@/logo.ico"
 
@@ -17,13 +18,13 @@ BEGIN
    BEGIN
       BLOCK "040904B0"
       BEGIN
-         VALUE "CompanyName",      "Metaversal Corporation"
-         VALUE "FileDescription",  "Rubidium Setup"
+         VALUE "CompanyName",      PRODUCT_COMPANY
+         VALUE "FileDescription",  PRODUCT_DESCRIPTION_SETUP
          VALUE "FileVersion",      "@RUBIDIUM_VER@"
-         VALUE "InternalName",     "RubidiumSetup"
+         VALUE "InternalName",     PRODUCT_NAME_SETUP
          VALUE "LegalCopyright",   "Copyright 2026 Metaversal Corporation. All rights reserved."
-         VALUE "OriginalFilename", "RubidiumSetup.exe"
-         VALUE "ProductName",      "Rubidium"
+         VALUE "OriginalFilename", PRODUCT_SETUP_EXE
+         VALUE "ProductName",      PRODUCT_NAME
          VALUE "ProductVersion",   "@RUBIDIUM_VER@"
       END
    END

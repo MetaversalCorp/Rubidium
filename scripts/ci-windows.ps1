@@ -217,6 +217,8 @@ Enable-CiSshAuth
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RubidiumDir   = Resolve-Path (Join-Path $ScriptDir '..')
+. (Join-Path $RubidiumDir 'branding\Read-Product.ps1')
+$Product = Get-ProductIdentity $RubidiumDir
 $SneezeDir    = Join-Path (Split-Path -Parent $RubidiumDir) 'Sneeze'
 $Platform     = 'windows-x64'
 $ConfigLower  = $Config.ToLower()
@@ -639,8 +641,8 @@ if ($env:SKIP_SIGN -ne '1') {
    Write-Host '============================================================'
 
    Invoke-Sign @(
-      "$BinDir\Rubidium.exe",
-      "$BinDir\RubidiumSetup.exe",
+      "$BinDir\$($Product.Name).exe",
+      "$BinDir\$($Product.NameSetup).exe",
       "$SneezeLibs\Wasmtime\install\lib\wasmtime.dll",
       "$SneezeLibs\Halogen\install\bin\anari_library_halogen.dll"
    )
@@ -824,7 +826,7 @@ CPack/NSIS would ship without UI fonts. Check src/CMakeLists.txt install(CODE) a
 
       $installer = Get-RubidiumInstaller $PkgDir $Version $Platform
       $manifest  = Join-Path $RubidiumDir 'pkg\manifest.json'
-      $setup     = Join-Path $BinDir 'RubidiumSetup.exe'
+      $setup     = Join-Path $BinDir "$($Product.NameSetup).exe"
 
       if ($installer) {
          Write-Host "  Installer -> releases/$Version/$($installer.Name)"
@@ -835,7 +837,7 @@ CPack/NSIS would ship without UI fonts. Check src/CMakeLists.txt install(CODE) a
       Copy-Item $manifest $CdnRoot -Force
 
       if (Test-Path $setup) {
-         Write-Host "  Stub      -> download/RubidiumSetup.exe"
+         Write-Host "  Stub      -> download/$($Product.NameSetup).exe"
          Copy-Item $setup $CdnDownload -Force
       }
 
@@ -850,11 +852,11 @@ Write-Host '============================================================'
 Write-Host "  Done  (v$Version, $Platform, $Config)"
 Write-Host '============================================================'
 
-if (Test-Path "$BinDir\Rubidium.exe") {
-   Write-Host "  Rubidium.exe      -> $BinDir\Rubidium.exe"
+if (Test-Path "$BinDir\$($Product.Name).exe") {
+   Write-Host "  $($Product.Name).exe      -> $BinDir\$($Product.Name).exe"
 }
-if (Test-Path "$BinDir\RubidiumSetup.exe") {
-   Write-Host "  RubidiumSetup.exe -> $BinDir\RubidiumSetup.exe"
+if (Test-Path "$BinDir\$($Product.NameSetup).exe") {
+   Write-Host "  $($Product.NameSetup).exe -> $BinDir\$($Product.NameSetup).exe"
 }
 if (Test-Path $PkgDir) {
    $installer = Get-RubidiumInstaller $PkgDir $Version $Platform

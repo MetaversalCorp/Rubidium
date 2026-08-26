@@ -12,6 +12,7 @@
 #include "resource.h"
 
 #include "version.h"
+#include "Brand.h"
 
 #include <curl/curl.h>
 
@@ -26,10 +27,6 @@ namespace SNEEZE
    extern const char* const         g_szCaCertPem;
    extern const unsigned long       g_nCaCertPemLen;
 }
-#endif
-
-#ifndef RUBIDIUM_CDN_URL
-#define RUBIDIUM_CDN_URL "https://cdn.rp1.com/rubidium/"
 #endif
 
 #ifndef RUBIDIUM_PLATFORM
@@ -378,7 +375,7 @@ bool UPDATER::ParseReleaseNotesFromManifest (const std::string& sJson, const std
 bool UPDATER::FetchManifestJson (std::string& sJson)
 {
    bool        bResult = false;
-   std::string sUrl    = std::string (RUBIDIUM_CDN_URL) + "manifest.json";
+   std::string sUrl    = std::string (PRODUCT_CDN_URL) + "manifest.json";
    CURL*       pCurl   = curl_easy_init ();
 
    if (pCurl)

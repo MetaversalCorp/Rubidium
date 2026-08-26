@@ -4,6 +4,7 @@
 
 #include "updater/UpdaterGeneric.h"
 #include "shell/AppFrame.h"
+#include "Brand.h"
 
 #if defined(__APPLE__) && !defined(RUBIDIUM_IOS)
 #include <mach-o/dyld.h>
@@ -51,7 +52,7 @@ std::string UPDATER_NATIVE::SetupExePath () const
    if (_NSGetExecutablePath (szPath, &nSize) == 0)
    {
       std::string sExeDir = fs::path (szPath).parent_path ().string ();
-      std::string sCandidate = sExeDir + "/RubidiumSetup";
+      std::string sCandidate = sExeDir + "/" PRODUCT_NAME_SETUP;
       if (fs::exists (sCandidate))
          sResult = sCandidate;
    }
@@ -62,12 +63,12 @@ std::string UPDATER_NATIVE::SetupExePath () const
    if (nLen > 0)
    {
       szPath[nLen] = '\0';
-      std::string sCandidate = fs::path (szPath).parent_path ().string () + "/RubidiumSetup";
+      std::string sCandidate = fs::path (szPath).parent_path ().string () + "/" PRODUCT_NAME_SETUP;
       if (fs::exists (sCandidate))
          sResult = sCandidate;
    }
 #else
-   sResult = "./RubidiumSetup";
+   sResult = "./" PRODUCT_NAME_SETUP;
 #endif
 
    return sResult;

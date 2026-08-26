@@ -8,6 +8,7 @@
 #include "AppFrame_SDL.h"
 #include "canvas/Canvas.h"
 #include "version.h"
+#include "Brand.h"
 
 using namespace RUBIDIUM;
 
@@ -518,7 +519,7 @@ void* APPFRAME_SDL::Init (APPFRAME* pAppFrame_From, SNEEZE::CONTEXT::eSESSION eS
 
    m_pController->Window_OnCreate (this, pAppFrame_From, nX, nY, nWidth, nHeight, bMaximized);
 
-   if (Initialize (nWidth, nHeight, "Rubidium", eSession))
+   if (Initialize (nWidth, nHeight, PRODUCT_NAME, eSession))
       return NativeWindow ();
 
    return nullptr;

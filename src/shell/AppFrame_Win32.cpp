@@ -1,6 +1,7 @@
 // Copyright 2026 Metaversal Corporation. All rights reserved.
 
 #include "resource.h"
+#include "Brand.h"
 #include "logger/ILogger.h"
 #include "inspector/InspectorRml.h"
 #include "shell/WinUtils.h"
@@ -13,7 +14,7 @@ static constexpr char* g_szLogLevels[LOGGER::kLOGLEVEL_COUNT] = { "trace", "info
 static constexpr int IDC_BTN_ELLIPSIS     = 0x0103;
 static constexpr int IDC_URL_EDIT         = 0x0104;
 
-static const WCHAR   wszUrlPopupClass[]   = L"RubidiumUrlPopupClass";
+static const WCHAR   wszUrlPopupClass[]   = PRODUCT_URL_POPUP_CLASS_W;
 
 // Maximum history rows shown at once in the URL dropdown.
 static constexpr int URL_POPUP_MAX_ROWS   = 10;
@@ -1945,7 +1946,7 @@ void* APPFRAME_NATIVE::Init (APPFRAME* pAppFrame_From, SNEEZE::CONTEXT::eSESSION
    m_pImpl->m_eSession = eSession;
 
    m_pController->Window_OnCreate (this, pAppFrame_From, nX, nY, nWidth, nHeight, bMaximized);
-   if (CreateWindowExA (WS_EX_APPWINDOW, "RubidiumFrameClass", "Rubidium", WS_THICKFRAME | WS_SYSMENU | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_CLIPCHILDREN | WS_VISIBLE, nX, nY, nWidth, nHeight, nullptr, nullptr, m_pImpl->m_hInst, m_pImpl) != NULL)
+   if (CreateWindowExA (WS_EX_APPWINDOW, PRODUCT_WINDOW_CLASS, PRODUCT_NAME, WS_THICKFRAME | WS_SYSMENU | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_CLIPCHILDREN | WS_VISIBLE, nX, nY, nWidth, nHeight, nullptr, nullptr, m_pImpl->m_hInst, m_pImpl) != NULL)
    {
       if (bMaximized)
          ShowWindow (m_pImpl->m_hWnd, SW_MAXIMIZE);

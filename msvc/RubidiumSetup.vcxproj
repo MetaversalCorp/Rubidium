@@ -46,6 +46,7 @@
     <RubidiumBuildRoot>$(RubidiumRoot)\builds\windows-x64</RubidiumBuildRoot>
     <SneezeDepsRoot>$(SneezeRoot)\deps\builds\windows-x64</SneezeDepsRoot>
   </PropertyGroup>
+  <Import Project="$(RubidiumRoot)\branding\Brand.props" />
   <PropertyGroup>
     <CfgLower Condition="'$(Configuration)'=='Debug'">debug</CfgLower>
     <CfgLower Condition="'$(Configuration)'=='Release'">release</CfgLower>
@@ -56,7 +57,7 @@
   <PropertyGroup>
     <OutDir>$(RubidiumBuildRoot)\install\$(CfgLower)\bin\</OutDir>
     <IntDir>$(RubidiumBuildRoot)\build\RubidiumSetup.dir\$(Configuration)\</IntDir>
-    <TargetName>RubidiumSetup</TargetName>
+    <TargetName>$(ProductNameSetup)</TargetName>
     <TargetExt>.exe</TargetExt>
     <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
@@ -67,7 +68,7 @@
   <!-- ===================================================================== -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SneezeDepsRoot)\debug\libs\curl\install\include;$(SneezeDepsRoot)\debug\libs\nlohmann-json\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(SneezeDepsRoot)\debug\libs\curl\install\include;$(SneezeDepsRoot)\debug\libs\nlohmann-json\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -76,22 +77,24 @@
       <Optimization>Disabled</Optimization>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;CURL_STATICLIB;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;CURL_STATICLIB;RUBIDIUM_PLATFORM="windows-x64";_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <AdditionalDependencies>$(SneezeDepsRoot)\debug\libs\curl\install\lib\libcurl-d.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;ws2_32.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDataBaseFile>$(OutDir)RubidiumSetup.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>$(OutDir)$(TargetName).pdb</ProgramDataBaseFile>
       <SubSystem>Windows</SubSystem>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
     </Link>
     <PreBuildEvent>
-      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $pkg = '$(RubidiumRoot)/pkg' -replace '\\','/'; $r = (Get-Content '$(RubidiumRoot)\pkg\setup.rc.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@RUBIDIUM_VER@',($v -join '.') -replace '@RUBIDIUM_PKG_DIR@',$pkg; [IO.File]::WriteAllText('$(IntDir)setup.rc', $r)"</Command>
-      <Message>Generating setup.rc from setup.rc.in</Message>
+      <Command>powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-BrandHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)Brand.h"
+powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $pkg = '$(RubidiumRoot)/pkg' -replace '\\','/'; $r = (Get-Content '$(RubidiumRoot)\pkg\setup.rc.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@RUBIDIUM_VER@',($v -join '.') -replace '@RUBIDIUM_PKG_DIR@',$pkg; [IO.File]::WriteAllText('$(IntDir)setup.rc', $r)"</Command>
+      <Message>Generating Brand.h and setup.rc</Message>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <!-- ===================================================================== -->
@@ -99,7 +102,7 @@
   <!-- ===================================================================== -->
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SneezeDepsRoot)\release\libs\curl\install\include;$(SneezeDepsRoot)\release\libs\nlohmann-json\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(SneezeDepsRoot)\release\libs\curl\install\include;$(SneezeDepsRoot)\release\libs\nlohmann-json\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -108,24 +111,26 @@
       <Optimization>MaxSpeed</Optimization>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <UseFullPaths>false</UseFullPaths>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;CURL_STATICLIB;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;CURL_STATICLIB;RUBIDIUM_PLATFORM="windows-x64";_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
       <AdditionalDependencies>$(SneezeDepsRoot)\release\libs\curl\install\lib\libcurl.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;ws2_32.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <ProgramDataBaseFile>$(OutDir)RubidiumSetup.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>$(OutDir)$(TargetName).pdb</ProgramDataBaseFile>
       <SubSystem>Windows</SubSystem>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
     </Link>
     <PreBuildEvent>
-      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $pkg = '$(RubidiumRoot)/pkg' -replace '\\','/'; $r = (Get-Content '$(RubidiumRoot)\pkg\setup.rc.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@RUBIDIUM_VER@',($v -join '.') -replace '@RUBIDIUM_PKG_DIR@',$pkg; [IO.File]::WriteAllText('$(IntDir)setup.rc', $r)"</Command>
-      <Message>Generating setup.rc from setup.rc.in</Message>
+      <Command>powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-BrandHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)Brand.h"
+powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $pkg = '$(RubidiumRoot)/pkg' -replace '\\','/'; $r = (Get-Content '$(RubidiumRoot)\pkg\setup.rc.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@RUBIDIUM_VER@',($v -join '.') -replace '@RUBIDIUM_PKG_DIR@',$pkg; [IO.File]::WriteAllText('$(IntDir)setup.rc', $r)"</Command>
+      <Message>Generating Brand.h and setup.rc</Message>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <!-- ===================================================================== -->

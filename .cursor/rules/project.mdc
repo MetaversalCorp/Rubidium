@@ -17,6 +17,22 @@ The GitHub repository is **public**. Source files remain proprietary: every `.h`
 
 **Rubidium** is the public upstream application core (Chromium / VS Code in this split). Metaversal's **Artemis** is a private branded derivative (Edge / Cursor): different product strings, installer identity, and extra features. Artemis keeps `RUBIDIUM::` and the shared file layout so it can periodically `git fetch` this repository and `git merge`. Shared work lands here first. Artemis-only work is never merged back.
 
+**Branding overlay (`branding/`):** Product identity is isolated so Artemis does not fork chrome/build files. The overlay is:
+
+| File | Who reads it |
+|------|----------------|
+| `branding/Product.cmake` | CMake (`include`), generates `Brand.h` via `configure_file`. Source of truth for C++ and CPack. |
+| `branding/Brand.h.in` | Template. CMake writes `Brand.h` into the build dir; MSVC PreBuildEvent writes `Brand.h` into `$(IntDir)` via `branding/Generate-BrandHeader.ps1`. |
+| `branding/Brand.props` | Hand-maintained MSVC projects (`TargetName`). Must stay in sync with `Product.cmake` (`PRODUCT_NAME` / `PRODUCT_NAME_SETUP`). |
+
+Call sites use `PRODUCT_NAME`, `PRODUCT_HOME_URL`, `PRODUCT_CDN_URL`, `PRODUCT_APPDATA_DIR`, `PRODUCT_WINDOW_CLASS`, `PRODUCT_MUTEX`, `OUTPUT_NAME`, CPack/NSIS strings, and macOS bundle id — not string literals. CMake target names stay `Rubidium` / `RubidiumSetup`; only the on-disk binary name changes (`OUTPUT_NAME` / `$(ProductName)`).
+
+Artemis replaces `branding/Product.cmake` and `branding/Brand.props` (and logos/LICENSE/README as needed). It does **not** rename `namespace RUBIDIUM`, include guards, or source paths.
+
+**Not in the hook (known overlay exceptions):** Android Java package `com.rp1.Rubidium` and the JNI export `Java_com_rp1_Rubidium_MainActivity_*` (renaming those requires a matching Java folder). `pkg/macos/Rubidium.entitlements` filename. README/NOTICE/LICENSE prose.
+
+`-DRUBIDIUM_CDN_URL=` still overrides the CDN at CMake configure time; that value is written into generated `Brand.h` as `PRODUCT_CDN_URL`.
+
 Both Rubidium and Sneeze are part of the **Open Metaverse Browser Initiative (OMBI)**, an organizational unit under the Metaverse Standards Forum. OMBI's mission is to define and build a reference implementation of the Open Metaverse Browser (OMB). Sneeze is the engine (open source, Apache 2.0); Rubidium is the application (proprietary).
 
 ### Relationship to Sneeze
@@ -58,6 +74,13 @@ The MBE relies on six industry-adopted open standards that abstract the underlyi
 
 ```
 Rubidium/
+├── branding/              Product identity overlay (Artemis replaces Product.cmake + Brand.props)
+│   ├── Product.cmake      CMake + generated Brand.h source of truth
+│   ├── Brand.h.in         C++ PRODUCT_* template
+│   ├── Brand.props        MSVC TargetName (keep in sync with Product.cmake)
+│   ├── Generate-BrandHeader.ps1
+│   ├── Read-Product.ps1
+│   └── read-product.sh
 ├── deps/                  Deps CMake project (standalone, never references src/)
 │   ├── CMakeLists.txt     Deps entry: all deps by default, -DDEP=<name> for CI
 │   └── sdl3.cmake         ExternalProject_Add for SDL3
