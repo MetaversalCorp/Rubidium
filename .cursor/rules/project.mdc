@@ -1,0 +1,628 @@
+---
+description: Rubidium project context — metaverse browser application (proprietary, consumes Sneeze engine)
+alwaysApply: true
+---
+
+# Rubidium — Metaverse Browser Application
+
+> **This file is the project's shared knowledge base.** Any developer or AI assistant who clones this repository inherits this file as their starting context. It is not a sequential log — it does not record session history or append dated entries. It describes what the project *is right now*: architecture, codebase structure, dependencies, build decisions and their rationale, conventions, and roadmap status. Update sections in place as the project evolves. Session-level notes belong in session log files, not here.
+
+## Overview
+
+**Rubidium** is the metaverse browser application — the single `.exe` the user runs. Analogous to Chromium in the web browser world. It is built on top of the **Sneeze** engine, which provides the rendering, compute, sandboxing, and networking abstractions. Rubidium is responsible for everything the user directly interacts with: the application window, chrome (URL bar, menus, toolbars), and `main()`. All C++ application code lives in `namespace RUBIDIUM`.
+
+The GitHub repository is **public**. Source files remain proprietary: every `.h` / `.cpp` carries `// Copyright 2026 Metaversal Corporation. All rights reserved.` There is no `LICENSE` file and no grant to modify or redistribute. The `NOTICE` file credits Sneeze (Apache 2.0) and SDL3 (zlib).
+
+### Relationship to Artemis
+
+**Rubidium** is the public upstream application core (Chromium / VS Code in this split). Metaversal's **Artemis** is a private branded derivative (Edge / Cursor): different product strings, installer identity, and extra features. Artemis keeps `RUBIDIUM::` and the shared file layout so it can periodically `git fetch` this repository and `git merge`. Shared work lands here first. Artemis-only work is never merged back.
+
+Both Rubidium and Sneeze are part of the **Open Metaverse Browser Initiative (OMBI)**, an organizational unit under the Metaverse Standards Forum. OMBI's mission is to define and build a reference implementation of the Open Metaverse Browser (OMB). Sneeze is the engine (open source, Apache 2.0); Rubidium is the application (proprietary).
+
+### Relationship to Sneeze
+
+- **Sneeze** is the Metaverse Browser Engine (MBE) — a standalone, reusable static library (`.lib`). It owns all third-party engine dependencies (Wasmtime, SPIRV-Tools, OpenXR, curl, RmlUi, ANARI, glslang) and the engine modules that wrap them. Another team could build a different metaverse browser on top of Sneeze without touching Rubidium.
+- **Rubidium** consumes Sneeze via CMake `add_subdirectory`. Edit a `.cpp` in either repo, hit build — CMake detects the change and rebuilds the right targets. No commit/push/fetch cycle required.
+- **Standalone Sneeze build is NOT consumed by Rubidium.** Running `Sneeze/scripts/build-<platform>` produces `Sneeze/builds/<plat>/install/<cfg>/lib/Sneeze.lib`. Building Rubidium produces `Sneeze.lib` from Sneeze's sources via `add_subdirectory` at the **same location** (`Sneeze/builds/<plat>/install/<cfg>/lib/Sneeze.lib`) — all Sneeze build activity is routed into Sneeze's own `builds/` folder, never under Rubidium. Standalone and inline builds share the same output path and overwrite each other, which is acceptable since you're either building from one or the other, not both simultaneously. The standalone build exists only so Sneeze can be tested/built on its own. For day-to-day Rubidium work, running Sneeze's build script is **optional** — Rubidium's build script alone produces a complete `Rubidium.exe` with its own inline-built `Sneeze.lib`. What Rubidium **does** require from the Sneeze repo is Sneeze's **prebuilt deps tree** at `Sneeze/deps/builds/<plat>/<cfg>/libs/` (Wasmtime, ANARI, SPIRV-Tools, curl, etc.) — those are consumed by both the standalone and inline Sneeze builds.
+- **SDL3** belongs to Rubidium, not Sneeze. The engine is embeddable without owning windowing. The application (Rubidium) creates the window and passes raw input deltas to the engine.
+- **SNEEZE_DIR** cache variable defaults to `../Sneeze`. Override with `-DSNEEZE_DIR=<path>` for non-standard layouts or CI.
+- The hand-maintained `msvc/Rubidium.sln` contains three projects — the Rubidium executable, the Sneeze static library, and the Sneeze test suite — one IDE instance, full navigation and debugging across both repos. The CMake-generated `.sln` under `builds/` also contains both targets but is not the primary dev artifact.
+
+**Prerequisite:** Sneeze's third-party deps must be built first via its deps tree (`Sneeze/deps/`). Rubidium doesn't rebuild those — it needs them to exist at `Sneeze/deps/builds/<platform>/<config>/libs/`.
+
+## Architecture Reference
+
+The OMB architecture is fully documented in `OMB_Architecture_4.md` (the authoritative architecture document, version 4, 2026 Q2, maintained outside both repos). This document covers the MBE (Metaverse Browser Engine), its core abstractions, the SOM, rendering engine, UI toolkit, identity, avatars, spatial audio, and the content provider ecosystem.
+
+### MBE Core Abstractions (Sneeze-side, consumed by Rubidium)
+
+The MBE relies on six industry-adopted open standards that abstract the underlying hardware:
+
+- **ANARI** — rendering abstraction (scene description, not GPU calls)
+- **SPIR-V Compute via ANARI** — browser-internal GPU compute
+- **SPIR-V** — GPU interchange format for graphics and compute shaders
+- **OpenXR** — device I/O abstraction for VR/AR
+- **WASM** — sandboxed execution for third-party service logic
+- **SMAP** (Service Model Access Protocol) — fabric connectivity and service driver layer
+
+### Core Concepts
+
+- **Spatial Fabric** — a collection of services that together define a spatial environment
+- **Service** — a discrete unit of functionality within a spatial fabric
+- **SOM** (Scene Object Model) — the browser's internal scene graph (like the DOM for 3D)
+- **Proximity** — the primary discovery and connection mechanism, replacing URLs
+
+## Rubidium Codebase
+
+### Directory Structure
+
+```
+Rubidium/
+├── deps/                  Deps CMake project (standalone, never references src/)
+│   ├── CMakeLists.txt     Deps entry: all deps by default, -DDEP=<name> for CI
+│   └── sdl3.cmake         ExternalProject_Add for SDL3
+│   │   --- Generated at build time, gitignored ---
+│   ├── repos/             Shared source clones (reused across configs)
+│   └── builds/<platform>/<config>/
+│       ├── build/         Deps CMake scratch + stamp files
+│       └── libs/SDL3/{build,install}/
+├── src/                   Rubidium CMake project (standalone, never references deps/)
+│   ├── CMakeLists.txt     Rubidium project definition
+│   ├── main.cpp           Application entry point
+│   ├── version.h.in       Version header template
+│   ├── rubidium.rc.in      Windows resource template for Rubidium.exe (icon + version info)
+│   ├── shell/             Application controller + native window frames
+│   │   ├── App.h / App.cpp             Abstract base class (IENGINE host, settings, SDL window registry, logger)
+│   │   ├── App_Win32.h / App_Win32.cpp  Win32 derived class APPNATIVE (singleton, mutex, message loop, IAPPWINDOW)
+│   │   ├── AppFrame.h / .cpp           Cross-platform base class + IAPPWINDOW callback interface
+│   │   ├── AppFrame_Win32.h / .cpp     Win32/DWM implementation
+│   │   ├── AppFrame_SDL.h / .cpp     SDL3-based intermediate base (Linux, macOS, iOS, Android)
+│   │   ├── AppFrame_Linux.h / .cpp   Linux-specific (inherits APPFRAME_SDL)
+│   │   ├── AppFrame_Mac.h / .cpp     macOS-specific (inherits APPFRAME_SDL)
+│   │   ├── AppFrame_iOS.h / .cpp     iOS-specific (inherits APPFRAME_SDL)
+│   │   └── AppFrame_Android.h / .cpp Android-specific (inherits APPFRAME_SDL)
+│   ├── canvas/            SDL3 rendering viewport (child of APPFRAME)
+│   │   ├── Canvas.h
+│   │   └── Canvas.cpp
+│   ├── astro/             Disposable solar system demo
+│   │   ├── Celestial.h / .cpp
+│   │   ├── Orbit.h / .cpp
+│   │   ├── RMCObject.h / .cpp
+│   │   └── BodyData.h / .cpp
+│   ├── updater/           Auto-update module
+│   │   ├── Updater.h
+│   │   └── Updater.cpp
+│   ├── inspector/         Developer tools panel (Chrome DevTools-style)
+│   │   ├── Inspector.h            Old inspector — Win32 native popup (tab management)
+│   │   ├── Inspector.cpp
+│   │   ├── Tab.h                  Consolidated header: ITAB, TAB_PLACEHOLDER, TAB_NETWORK, all 6 placeholder tab classes
+│   │   ├── Tab.cpp                TAB_PLACEHOLDER implementation
+│   │   ├── Tab_Network.cpp        Network tab (Win32 native, fully implemented)
+│   │   ├── Tab_Elements.cpp       Placeholder tab (empty stub)
+│   │   ├── Tab_Console.cpp        Placeholder tab (empty stub)
+│   │   ├── Tab_Sources.cpp        Placeholder tab (empty stub)
+│   │   ├── Tab_Performance.cpp    Placeholder tab (empty stub)
+│   │   ├── Tab_Memory.cpp         Placeholder tab (empty stub)
+│   │   ├── Tab_Application.cpp    Placeholder tab (empty stub)
+│   │   ├── Tab_Security.cpp       Placeholder tab (empty stub)
+│   │   ├── InspectorRml.h         INSPECTOR_WIDGET base class + INSPECTOR_RML class declaration
+│   │   ├── InspectorRml.cpp       INSPECTOR_RML::Impl (tab management via RMLUI_SDL composition) + INSPECTOR_TAB
+│   │   ├── InspectorRml_Style.inl CSS stylesheet for the inspector (raw string literal, included by InspectorRml.cpp)
+│   │   ├── elements/              Elements panel (stub)
+│   │   │   ├── Elements.h         IW_ELEMENTS class
+│   │   │   └── Elements_Frame.cpp Initialize implementation (empty)
+│   │   ├── console/               Console panel (stub)
+│   │   │   ├── Console.h          IW_CONSOLE class
+│   │   │   └── Console_Frame.cpp  Initialize implementation (empty)
+│   │   ├── sources/               Sources panel (stub)
+│   │   │   ├── Sources.h          IW_SOURCES class
+│   │   │   └── Sources_Frame.cpp  Initialize implementation (empty)
+│   │   ├── network/               Network panel (fully implemented)
+│   │   │   ├── Network.h          IW_NETWORK + all IW_NETWORK_* component classes
+│   │   │   ├── Network_Frame.cpp  IW_NETWORK — top-level layout (toolbar, waterfall, body, statusbar)
+│   │   │   ├── Network_Toolbar.cpp        IW_NETWORK_TOOLBAR — record/clear/reset/filter/disable-cache/throttle/settings + filter bar
+│   │   │   ├── Network_Waterfall.cpp      IW_NETWORK_WATERFALL — horizontal timing waterfall (placeholder)
+│   │   │   ├── Network_Body.cpp           IW_NETWORK_BODY — manages containers sidebar, files list, details pane
+│   │   │   ├── Network_Containers.cpp     IW_NETWORK_CONTAINERS — container/store sidebar list
+│   │   │   ├── Network_Files.cpp          IW_NETWORK_FILES — main file list with header, rows, column separators
+│   │   │   ├── Network_Statusbar.cpp      IW_NETWORK_STATUSBAR — request count, transfer size summary
+│   │   │   ├── Network_Details.cpp        IW_NETWORK_DETAILS — detail pane (headers/preview/response/timing tabs)
+│   │   │   ├── Network_Detail_Headers.cpp IW_NETWORK_DETAIL_HEADERS — Headers tab of detail pane
+│   │   │   ├── Network_Detail_Preview.cpp IW_NETWORK_DETAIL_PREVIEW — Preview tab of detail pane
+│   │   │   ├── Network_Detail_Response.cpp IW_NETWORK_DETAIL_RESPONSE — Response tab of detail pane
+│   │   │   └── Network_Detail_Timing.cpp  IW_NETWORK_DETAIL_TIMING — Timing tab of detail pane
+│   │   ├── performance/           Performance panel (stub)
+│   │   │   ├── Performance.h      IW_PERFORMANCE class
+│   │   │   └── Performance_Frame.cpp Initialize implementation (empty)
+│   │   ├── memory/                Memory panel (stub)
+│   │   │   ├── Memory.h           IW_MEMORY class
+│   │   │   └── Memory_Frame.cpp   Initialize implementation (empty)
+│   │   ├── application/           Application panel (stub)
+│   │   │   ├── Application.h      IW_APPLICATION class
+│   │   │   └── Application_Frame.cpp Initialize implementation (empty)
+│   │   └── security/              Security panel (stub)
+│   │       ├── Security.h         IW_SECURITY class
+│   │       └── Security_Frame.cpp Initialize implementation (empty)
+│   ├── rmlui_sdl/         Reusable RmlUi/SDL3 window module (shared by inspector, url bar, future windows)
+│   │   ├── RmlUi_SDL.h           RMLUI_SDL class — reusable SDL+RmlUi window (pimpl)
+│   │   ├── RmlUi_SDL.cpp         RMLUI_SDL implementation (window, renderer, context, events, toggle)
+│   │   ├── RmlUi_SDL_Renderer.h / .cpp   RmlUi render interface (SDL_Renderer backend)
+│   │   └── RmlUi_SDL_Platform.h / .cpp   RmlUi system/platform interface (SDL3 events, clipboard, cursors)
+│   ├── logger/            Logging infrastructure
+│   │   ├── Logger.h       ILOGGER interface + LOGGER class (log levels, threaded output)
+│   │   ├── Logger.cpp     LOGGER implementation (background thread, timestamped formatting)
+│   │   ├── ILogger.h      ILOGGER_NATIVE (platform output backend)
+│   │   └── ILogger.cpp    printf (Windows) / SDL_Log (other platforms)
+│   └── settings/          **REMOVED** — absorbed into APP base class (App.h/App.cpp)
+├── pkg/                   Packaging assets
+│   ├── manifest.json      Release manifest (cumulative, uploaded to CDN)
+│   ├── generate_manifest.cpp  Build tool for updating manifest after CPack
+│   ├── RubidiumSetup.cpp   Standalone setup/updater executable (web install + auto-update)
+│   ├── setup.rc.in        Windows resource template for RubidiumSetup.exe (icon + version info)
+│   ├── LICENSE.md         Terms of use (ASCII-encoded, displayed in NSIS license page)
+│   ├── logo.png           Application logo (source PNG)
+│   ├── logo-square.ico    Application icon (square)
+│   ├── logo-rounded.ico   Application icon (rounded corners — exe and installer)
+│   └── logo-round.ico     Application icon (circular)
+├── scripts/               Platform build drivers (the only glue between deps and src)
+│   ├── build-deps.sh      Shared dep-iteration logic (Unix)
+│   ├── build-linux.sh     Linux entry point
+│   ├── build-macos.sh     macOS entry point
+│   ├── build-windows.ps1  Windows entry point
+│   └── ci-windows.ps1     Jenkins CI entry point (clones Sneeze, builds everything)
+├── android/               Android build assets
+├── ios/                   iOS build assets
+├── macos/                 macOS build assets
+├── docker/                Docker build files
+├── msvc/                  Hand-maintained Visual Studio project (Windows primary dev)
+│   ├── Rubidium.sln        References Rubidium.vcxproj + Sneeze.vcxproj + SneezeTest.vcxproj
+│   ├── Rubidium.vcxproj    Hand-maintained project — source of truth for file lists on Windows
+│   └── Rubidium.vcxproj.filters   Solution Explorer folder structure mirroring src/
+├── .github/workflows/     CI (Linux, macOS, iOS, Android, Quest — GitHub Actions)
+│   --- Generated at build time, gitignored ---
+├── builds/<platform>/
+│   ├── build/             Rubidium CMake scratch (MULTI-CONFIG: one tree for both Debug + Release)
+│   │   ├── Rubidium.sln    Single sln — dropdown flips Debug/Release without reconfigure
+│   │   └── Rubidium.dir/{Debug,Release}/   Per-config intermediates
+│   └── install/<config>/
+│       ├── bin/           Rubidium.exe + RubidiumSetup.exe + runtime DLLs
+│       └── pkg/           CPack output (Rubidium-<ver>-<platform>.{exe,dmg,tar.gz})
+├── VERSION                Version number (read by CMake)
+├── .gitignore
+├── README.md
+└── NOTICE
+```
+
+### Module Structure
+
+All C++ code lives in namespace `RUBIDIUM`. Module sub-namespaces have been eliminated — classes from `shell/`, `canvas/`, `updater/` live directly in `namespace RUBIDIUM`. Sneeze types use `SNEEZE::CORE::`, `SNEEZE::renderer::`, etc. Source files are under `src/`:
+
+| Module | Namespace | Purpose | Status |
+|--------|-----------|---------|--------|
+| `shell/` | `RUBIDIUM` | Application controller and native window frames. Abstract base class `APP` (`App.h`/`App.cpp`) owns cross-platform concerns: `SNEEZE::IENGINE` host interface, settings management (loads/saves `settings.json`, formerly standalone `SETTINGS` singleton), SDL window registry (`ISDLWINDOW` map + `SDLWindow_Translate` dispatch), `LOGGER` ownership, font family. Platform-derived class `APPNATIVE` (`App_Win32.h`/`App_Win32.cpp` on Windows) owns platform-specific concerns: single-instance mutex, WNDCLASSEXW registration, Win32 message pump (`EventLoop`), `IAPPWINDOW` implementation (window create/destroy/focus/blur/new/exit callbacks), DPI awareness, Sneeze engine lifecycle. `IAPPWINDOW` callback interface (formerly `IAPPFRAME`) decouples window lifecycle events from `APPFRAME`. Multi-window: `APPNATIVE::Impl` maintains `std::vector<APPFRAME*>`, creates windows via `Window_Create()`, terminates when last window closes. Abstract base `APPFRAME` with `ProcessInput()` pure virtual; single concrete class name `APPFRAME_NATIVE` per platform. Non-Windows platforms inherit from `APPFRAME_SDL` (intermediate base). | Active — **stable, working** |
+| `canvas/` | `RUBIDIUM` | SDL3 rendering viewport — borderless SDL window reparented as `WS_CHILD` of APPFRAME's viewport region. No longer owns the top-level window. | Active |
+| `astro/` | `RUBIDIUM` | Orbital mechanics, solar system body data (disposable demo) | Temporary — will be removed as browser progresses |
+| `updater/` | `RUBIDIUM` | Slim update interface — checks for staged updates, prompts user, spawns RubidiumSetup.exe, polls for force-check results | Active |
+| `rmlui_sdl/` | `RUBIDIUM` | Reusable RmlUi/SDL3 window module. `RMLUI_SDL` class implements `ISDLWINDOW` and encapsulates all SDL window + RmlUi context boilerplate. Two-phase init: `Initialize(sTitle, nWidth, nHeight)` creates infrastructure (with `SDL_WINDOW_HIGH_PIXEL_DENSITY`, sets DPI ratios) and registers with `APP::SDLWindow_Register()`; `LoadDocument(sRmlDocument)` loads a fully-prepared RML string. Event handling: `HandleEvent(SDL_Event&)` routes to RmlUi input handler then calls `Render()` for immediate repaint; `Render()` runs `Context::Update()` + `Context::Render()` only when visible. Also handles `SDL_EVENT_WINDOW_MOVED` and `SDL_EVENT_WINDOW_RESIZED` (fired once upon completion of move/resize) — invokes optional `FN_WINDOW_GEOMETRY` callback with current x, y, width, height. `SetPosition(int nX, int nY)` sets window position via `SDL_SetWindowPosition`. `SetGeometryCallback(FN_WINDOW_GEOMETRY, void*)` registers an optional callback for geometry change notifications. Destructor unregisters from SDL window registry. DPI handled automatically. Used via composition (`RMLUI_SDL m_Window` member). Consumers: `INSPECTOR_RML`, `UrlBarRml` (future). | Active — **shared infrastructure** |
+| `inspector/` | `RUBIDIUM` | Developer tools panel — two implementations coexist during migration. **Old Inspector** (`Inspector.h/.cpp`, `Tab_*.cpp`): Win32 native popup with 8 tabs, Network tab fully implemented with live file table, toolbar, filters, container sidebar, timing waterfall. Toggled via F12 or ellipsis menu "Old Inspector". **New Inspector** (`InspectorRml.h/.cpp`, `network/`): Cross-platform RmlUi/SDL3 popup, pixel-perfect Chromium-style layout. Uses `RMLUI_SDL` via composition for window management. Widget hierarchy: `INSPECTOR_WIDGET` base class (virtual `Id()`, `Initialize(Rml::Element*)`, static `Create()` factory), `IW_` prefix naming convention (e.g., `IW_NETWORK`, `IW_NETWORK_TOOLBAR`). Each tab panel is an `INSPECTOR_WIDGET` subclass with its own `_Frame.cpp`. Network tab compartmentalized into separate C++ classes per component. Table-driven child widget instantiation via `FN_CREATEWIDGET` arrays and loops. Toggled via F11 or ellipsis menu "New Inspector". Starts hidden. All tab headers consolidated into single `Tab.h`. | Active — **migrating to RmlUi** |
+| `settings/` | `RUBIDIUM` | **REMOVED (absorbed into APP base class).** Application settings (app data path resolution, `settings.json` load/save, centralized preferences access) now live directly in the `APP` base class. The standalone `SETTINGS` singleton and `src/settings/` directory no longer exist. Access pattern changed from `SETTINGS::GetInstance()->JSON()` to `APPNATIVE::GetInstance()->SettingToJSON()`. | Removed |
+| `logger/` | (global) | Logging infrastructure — `ILOGGER` (abstract output interface), `ILOGGER_NATIVE` (platform backend: `printf` on Windows, `SDL_Log` elsewhere), `LOGGER` (threaded log processor with timestamped, leveled, module-tagged output). Owned by `APP`, pointer passed to `APPFRAME`s and modules. | Active |
+
+### Key Classes
+
+| Class | Module | Purpose |
+|-------|--------|---------|
+| `APP` | `shell` | Abstract base class (`App.h`/`App.cpp`) — the cross-platform application foundation. Inherits from `SNEEZE::IENGINE` (engine host interface). NOT a singleton — platform-derived class provides that. Constructor takes `(std::string sHomePath, ILOGGER* pILogger)`: resolves app data path, creates `Metaversal/Rubidium/` directories, loads `settings.json` (with `merge_patch` against defaults so all keys exist), creates `LOGGER` from the provided backend. Destructor writes `settings.json` to disk and destroys logger. Pure virtual `Run()`. Responsibilities: (1) **Settings management** (formerly `SETTINGS` singleton) — `SettingToJSON()` returns mutable `nlohmann::json&`; `sHomePath()` returns the resolved app data directory. (2) **IENGINE host** — `sAppDataPath()` returns `m_sHomePath`, `sRenderer()` returns `"halogen"`, `Log()` delegates to `m_pLogger`. (3) **SDL window registry** — `SDLWindow_Register(ISDLWINDOW*)` / `SDLWindow_Unregister(ISDLWINDOW*)` manage `m_mapSDLWindow` (unordered_map keyed by `SDL_WindowID`); `SDLWindow_Translate(SDL_Event&)` extracts the window ID from any SDL event type and dispatches to the matching `ISDLWINDOW::HandleEvent()`. (4) **Font family** — `sFontFamily()` getter, `sFontFamily(string)` setter. (5) **Logger** — `Logger()` accessor; `DestroyLogger()` for safe teardown ordering (derived class calls it from its dtor before deleting the ILOGGER backend). |
+| `APPNATIVE` | `shell` | Win32 platform-derived class (`App_Win32.h`/`App_Win32.cpp`). Inherits `APP`. Meyers singleton via `APPNATIVE::GetInstance()`. Constructor: calls `APP(ResolveAppDataPath(), new ILOGGER_NATIVE())`, creates `Impl`. `Impl` inherits `IAPPWINDOW` and owns all Win32-specific state: single-instance mutex, `HINSTANCE`, `HACCEL`, `SNEEZE::ENGINE*`, `std::vector<APPFRAME*> m_apAppFrame`, active/last-active window pointers. `Impl::Run()`: DPI awareness, WNDCLASSEXW registration, common controls init, log level restore from settings, Sneeze engine creation, font family resolution (`WINUTILS::DefaultFontFamily`/`FontFilePath`), `Rml::LoadFontFace`, `SDL_Init`, initial window creation, enters `EventLoop`. `Impl::EventLoop()`: Win32 message pump (`PeekMessageA` + accelerator dispatch), then `SDL_PollEvent` loop calling `m_pApp->SDLWindow_Translate(Event)` for each event, then `pAppFrame->ProcessInput()` for ALL AppFrames (not just active — ensures scroll deltas reach unfocused viewports), then `MsgWaitForMultipleObjects(INFINITE)` to sleep until next input. `IAPPWINDOW` callbacks: `Window_OnCreate` (reads geometry from settings or source window), `Window_OnDestroy` (saves geometry on last-close, posts quit), `Window_OnFocus/Blur`, `Window_OnNew`, `Window_OnExit` (posts WM_CLOSE to all). |
+| `ISDLWINDOW` | `shell` | Interface for SDL window event dispatch (`App.h`). Two pure virtuals: `SDLWindowID() const` (returns the SDL window ID for event routing) and `HandleEvent(SDL_Event&)` (processes a single dispatched event). Implemented by `CANVAS` and `RMLUI_SDL`. Windows register/unregister with `APP::SDLWindow_Register`/`Unregister` during their init/teardown. The central event loop drains `SDL_PollEvent` once per frame and calls `APP::SDLWindow_Translate` for each event — no competing poll loops, no events consumed by the wrong window. |
+| `IAPPWINDOW` | `shell` | Callback interface (formerly `IAPPFRAME`) that decouples `APPFRAME` windows from the application controller. Pure virtual methods: `Window_OnCreate(APPFRAME*, APPFRAME* pFrom, int& nX, int& nY, int& nWidth, int& nHeight, bool& bMaximized)` — window being created, fill geometry; `Window_OnDestroy(APPFRAME*)` — window destroyed, remove from tracking; `Window_OnFocus(APPFRAME*)` — window gained focus; `Window_OnBlur(APPFRAME*)` — window lost focus; `Window_OnNew(APPFRAME*, SNEEZE::CONTEXT::eSESSION)` — user requested a new window; `Window_OnExit()` — user invoked "Exit", close all windows. `APPNATIVE::Impl` is the sole implementor. |
+| `APPFRAME` / `APPFRAME_NATIVE` | `shell` | Abstract base (`APPFRAME`) + single concrete subclass name (`APPFRAME_NATIVE`) used on every platform — only one platform's translation unit compiles per build. Win32's `APPFRAME_NATIVE` inherits directly from `APPFRAME`; all other platforms' `APPFRAME_NATIVE` inherits from `APPFRAME_SDL`. Constructor takes `IAPPWINDOW* pController` (notification target), `SNEEZE::ENGINE*`, and `LOGGER*`. Pure virtual `ProcessInput()` — called once per frame by the main loop for ALL AppFrames (not just active). Win32 implementation delegates to `APPFRAMETAB_NATIVE::ProcessInput()` which calls `m_pCanvas->ProcessInput(m_pViewport)` to feed accumulated input deltas to Sneeze. Creates and owns the top-level OS window with DWM custom title bar (dark theme, per-monitor DPI v2 aware). Contains toolbar controls: pill-shaped URL text box (native EDIT with `RoundRect` border, default text `https://rp1.com/enter.msf`), app icon button, account icon button (Segoe MDL2 Assets 0xE77B), vertical ellipsis menu button (Unicode 0x22EE). All toolbar buttons have mouseover hover tracking. Manages ellipsis dropdown menu and right-click context menu. DWM system caption buttons (min/max/close) by default; custom-drawn via `#ifdef RUBIDIUM_CUSTOM_CAPTION_BUTTONS`. Handles `WM_NCHITTEST` for dragging, resize borders, snap layouts. Viewport STATIC and SDL child subclassed for `HTTRANSPARENT` near frame edges. Window lifecycle events reported to `m_pController` via `IAPPWINDOW` callbacks. `WM_CLOSE` triggers `WM_DESTROY` directly — `PostQuitMessage` NOT called from `APPFRAME`. Win32 `Init()` returns the `HWND` on success. Pimpl pattern. |
+| `CANVAS` | `canvas` | SDL3 rendering viewport. Implements `ISDLWINDOW` for centralized SDL event dispatch. Two-stage initialization: `Initialize(pParentHandle, nWidth, nHeight)` creates a borderless SDL window reparented as `WS_CHILD` of APPFRAME's main window (Win32) or reuses the parent `SDL_Window` directly (other platforms), then registers with `APP::SDLWindow_Register()`; `Shutdown()` calls `APP::SDLWindow_Unregister()`. `CreatePresentation()` creates the `SDL_Renderer` + `SDL_Texture` for CPU-pixel blitting (only needed when the ANARI renderer does NOT render directly to the native window surface). `NativeWindowHandle()` extracts the platform-native handle (HWND, ANativeWindow*, NSWindow*, wl_surface*, X11 Window). Event handling split into two methods: `HandleEvent(SDL_Event&)` (called by `SDLWindow_Translate`, updates input state — mouse position, button state, scroll deltas, key state) and `ProcessInput(SNEEZE::VIEWPORT*)` (called once per frame by `APPFRAMETAB::ProcessInput`, feeds accumulated input deltas to the Sneeze viewport and resets them). `Resize(nWidth, nHeight)` locks `m_textureMutex`, calls `SDL_SetWindowSize`, destroys/recreates the SDL texture, and forwards `Resize` to Sneeze. `Present(pPixels, nWidth, nHeight)` locks the same mutex and drops dimension-mismatched frames. SDL VSync disabled. `Width()` / `Height()` accessors. |
+| `UPDATER` | `updater` | Slim update interface: reads `Updates/Updates.json` for staged updates, compares against `skipped_version` in `Settings.json`, prompts user (Install/Skip/Cancel), spawns `RubidiumSetup.exe` for background check or apply |
+| `CELESTIAL` | `astro` | Orientation quaternion, precession, frame conversions |
+| `ORBIT` | `astro` | Keplerian orbital elements, Kepler solver, position computation |
+| `RMCOBJECT` | `astro` | Hierarchical body (star/planet/moon) with registry, color, radius |
+| `SETTINGS` | ~~settings~~ | **REMOVED.** Absorbed into the `APP` base class. Formerly: Meyers singleton resolving platform app data path, loading/saving `settings.json`. Now: `APP` constructor resolves path + loads settings with `merge_patch` against defaults; `APP` destructor writes to disk; `APP::SettingToJSON()` replaces `SETTINGS::GetInstance()->JSON()`; `APP::sHomePath()` replaces `SETTINGS::GetInstance()->sHomePath()`. The `src/settings/` directory and all `Settings.h`/`Settings.cpp` files have been deleted. |
+| `LOGGER` | `logger` | Threaded log processor. Accepts `Log(eLOGLEVEL, sModule, sMessage)` calls from any thread, queues them, and dispatches formatted lines (timestamp + level + module + message) to the `ILOGGER` output backend on a dedicated thread. Log levels: `kLOGLEVEL_Trace`, `kLOGLEVEL_Info`, `kLOGLEVEL_Warning`, `kLOGLEVEL_Error`, `kLOGLEVEL_Off`. Level filtering via `LogLevel(eLOGLEVEL)` / `LogLevel()` — messages below the current level are silently dropped; `Off` suppresses all output. Level is user-configurable via the ellipsis menu's "Log Level" submenu and persisted in `settings.json` under `logger.level`. Restored from settings on startup in `APP::Run()`. Owned by `APP` (created at construction), pointer passed to `APPFRAME`s. Pimpl pattern. |
+| `ILOGGER` / `ILOGGER_NATIVE` | `logger` | Abstract output interface (`ILOGGER::onMessage`) + platform backend (`ILOGGER_NATIVE`). Windows: `std::printf`. Other platforms: `SDL_Log`. The output backend owns line termination (appends `\n`); the formatter does not. |
+| `CreateSolarSystem()` | `astro` | Populates the full solar system body hierarchy from embedded data |
+| `INSPECTOR` | `inspector` | **Old Inspector.** Win32 native popup window. Owns the top-level `WS_OVERLAPPEDWINDOW` popup (not always-on-top). Manages 8 Chrome-style tabs along the top (Elements, Console, Sources, Network active by default, Performance, Memory, Application, Security). Each tab has a corresponding child window created by its `TAB_*` class — switching tabs shows/hides the appropriate child. Handles `WM_GETMINMAXINFO` (800×360 minimum) before `pImpl` guard since it arrives before `WM_CREATE`. Window position/size persisted in `settings.json` at `inspector.x/y/width/height`. Toggled via F12 hotkey or "Old Inspector" in the ellipsis menu. Pimpl pattern. |
+| `RMLUI_SDL` | `rmlui_sdl` | Reusable SDL+RmlUi window. Implements `ISDLWINDOW` for centralized SDL event dispatch. Pimpl pattern. Two-phase initialization: `Initialize(sTitle, nWidth, nHeight)` creates SDL window (hidden, resizable, `SDL_WINDOW_HIGH_PIXEL_DENSITY`), SDL renderer (vsync on), `RenderInterface_SDL` (white clear color), RmlUi context with `SetDensityIndependentPixelRatio(SDL_GetWindowDisplayScale())` and render scale from `SDL_GetWindowPixelDensity()`, then registers with `APP::SDLWindow_Register()`. DPI is fully automatic. `LoadDocument(sRmlDocument)` loads a fully token-substituted RML string. Event handling split: `HandleEvent(SDL_Event&)` (called by `SDLWindow_Translate`, routes to `RmlSDL::InputEventHandler`, then calls `Render()` for immediate repaint on interaction) and `Render()` (RmlUi context `Update()` + `Render()` cycle — only renders when window is visible). `Toggle()` shows/hides/raises, calls `Render()` on show. `SetPosition(int nX, int nY)` repositions the window. `SetGeometryCallback(FN_WINDOW_GEOMETRY, void*)` registers a callback invoked on `SDL_EVENT_WINDOW_MOVED` and `SDL_EVENT_WINDOW_RESIZED` (both fire once upon completion of the interactive move/resize gesture) with current x, y, width, height. `Document()` returns `Rml::ElementDocument*`. Destructor calls `APP::SDLWindow_Unregister()` then tears down context, renderer, window. Handles `SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED` and `SDL_EVENT_WINDOW_CLOSE_REQUESTED` (hides). Static `s_nInstanceCount` for unique context naming. |
+| `INSPECTOR_RML` | `inspector` | **New Inspector.** Cross-platform RmlUi/SDL3 popup window. Uses `RMLUI_SDL` via composition (`m_Window` member in `Impl`). `Impl` inherits `Rml::EventListener` for tab click dispatch. Owns `m_apTab[kTAB_COUNT]` (array of `INSPECTOR_TAB*`). Static members: `s_afnCreateWidget[kTAB_COUNT]` (factory table), `s_sRmlStyle` (CSS from `InspectorRml_Style.inl` — uses `dp` units throughout, `px` for hairline borders), `s_sRmlDocument` (RML template with `[{STYLE}]` placeholder). `Initialize(nWidth, nHeight)`: reads stored geometry from `settings.json` at `inspector_rml` key (x, y, width, height — falls back to passed-in nWidth/nHeight defaults of 900×600 on first launch), calls `m_Window.Initialize()` with stored/default size, calls `m_Window.SetPosition()` if stored position exists, registers `OnGeometryChanged` callback via `m_Window.SetGeometryCallback()` (writes geometry to settings on each completed move/resize), substitutes `[{FONT-FAMILY}]` in `sRmlStyle` with `APPNATIVE::GetInstance()->sFontFamily()` (injects font-family into CSS before parsing to avoid RmlUi warnings), substitutes `[{STYLE}]` in `sRmlDocument`, calls `m_Window.LoadDocument()`, then creates tabs in a loop. `Render()` delegates to `m_Window.Render()` — rendering is event-driven (triggered from `HandleEvent`), not called from any per-frame loop. Pixel-perfect Chromium DevTools color scheme. Font loading: Inter on all platforms, Material Symbols Outlined for icons, JetBrains Mono for monospace — loaded globally in `APP::Run()` via `Rml::LoadFontFace()`. DPI handled entirely by `RMLUI_SDL`. Toggled via F11 or "New Inspector" menu. Pimpl pattern. |
+| `INSPECTOR_TAB` | `inspector` | Tab button + panel owner inside `INSPECTOR_RML`. Constructor takes `Rml::EventListener*`. `Initialize(Rml::ElementDocument*, FN_CREATEWIDGET)`: creates the widget via factory, looks up `tab-<id>` and `panel-<id>` elements using `widget->Id()`, registers click listener, calls `widget->Initialize(pPanelElement)`. `Activate(Rml::Element* pClickedElement)` sets/removes `active` class on both tab and panel elements. Owns: `m_pRmlElement_Tab`, `m_pRmlElement_Panel`, `m_pPanel` (polymorphic `INSPECTOR_WIDGET*`). |
+| `INSPECTOR_WIDGET` | `inspector` | Abstract base class for all inspector widget content areas. Defined in `InspectorRml.h`. Pure virtual: `Id()` (returns widget string identifier, e.g. `"network"`), `Initialize(Rml::Element* pContainer)` (creates DOM content, returns success). Static `Create()` factory returns `nullptr` in base. `FN_CREATEWIDGET` typedef: `INSPECTOR_WIDGET* (*) ()`. Naming convention for subclasses: `IW_` prefix (e.g., `IW_NETWORK`, `IW_NETWORK_TOOLBAR`). Each top-level panel lives in its own subfolder with a header and `*_Frame.cpp`. Composite widgets use table-driven child instantiation: `enum eWIDGET` for child count, `static const FN_CREATEWIDGET s_afnCreateWidget[]` array, loop in `Initialize()`. |
+| `TAB_NETWORK` | `inspector` | **Old Inspector** Network tab — Chrome DevTools Network panel equivalent (Win32 native). Implements `ITAB` (`Create()`, `Hwnd()`). Receives cache events from Sneeze via `ISNEEZE` host callbacks (`OnCacheFileCreated/Changed/Deleted`), marshaled to the UI thread via `PostMessage` with custom `WM_USER+N` messages. Owns: (1) **Toolbar** — Record/Stop button (wired to `CACHE::MANAGER::SetDisplayEnabled`), Clear (clears UI list), Reset (calls `CACHE::MANAGER::Reset()`), Filter toggle, Disable Cache checkbox (wired to `SetCacheEnabled`), No Throttling dropdown (placeholder), Settings button (placeholder). All toolbar buttons are owner-drawn (`BS_OWNERDRAW`) with Segoe MDL2 Assets glyphs (e.g., `\xE71A` Stop, `\xEA3B` Record, `\xE894` Clear, `\xE72C` Reset, `\xE713` Settings, `\xE16E`/`\xE71C` Filter funnel). Custom hover tracking via `ToolbarBtnSubclass` (`SetWindowSubclass` + `TrackMouseEvent`). (2) **Filter bar** — text filter (matches against filename only, not full URL), type filter buttons (All, MSF, WASM, glTF, Socket, Img, Other) as owner-drawn toggles. Visibility toggled by the filter funnel button. (3) **Container sidebar** — one-column ListView populated from `CACHE::FILE::GetStoreName()`. Item 0 is always "(all)". Selecting a container filters the main list. Header column fixed-width via `HDF_FIXEDWIDTH`. (4) **Main file list** — virtual-mode (`LVS_OWNERDATA`) ListView with 5 columns (Name, Status, Type, Size, Time). Chrome-style column resizing: last column (Time) absorbs width changes. Column proportions persisted in `settings.json` at `inspector.columns`. Custom draw for alternating row colors. Flat header (`HDS_FLAT`), 22px rows (via small imagelist). Right-click context menu (Clear, Reset, Copy URL). Time column: converts `FetchDuration()` (seconds) to milliseconds, shows `(cache)` for cache-hit files. (5) **Waterfall** — subclassed STATIC window to the right of the file list (15% width). Custom-painted timing bars synced row-by-row with the ListView via `ListView_GetTopIndex`/`GetItemRect`. Color-coded: blue (network fetch), green (served from cache — renders a small bar at timeline start for cache-hit files with zero fetch timestamps), yellow (pending), red (failed). Time tick marks in the header area. Scroll sync via `ListScrollSubclass` on the ListView (intercepts `WM_VSCROLL`, `WM_MOUSEWHEEL`, `WM_KEYDOWN`). (6) **Status bar** — shows request count, filtered count (when filter active), total transferred size. (7) **Detail pane** — custom `RubidiumDetailPanel` window class (registered WNDCLASSEX with its own `DetailPanelWndProc`, NOT a STATIC subclass — needed for direct `WM_LBUTTONDOWN` handling). Opens when user clicks a list row (`LVN_ITEMCHANGED`). Replaces waterfall; squeezes list to show only the Name column. Four tabs: **Headers** (general info, response headers, cache info including `GetEntryIx`), **Preview** (text content or binary notice), **Response** (full body with hex dump for binary, truncation at 32KB), **Timing** (queue phase via `FetchQueuedTime`, request/response bars, summary with epoch timestamps). Close button on the left of the tab bar. Double-buffered paint, scrollable via `WM_VSCROLL`/`WM_MOUSEWHEEL`. Uses the Sneeze `FILE::Request()` / `FILE::Release()` attach/detach lifecycle: `ShowDetail` calls `pFile->Request()` to reattach the FILE to its ENTRY (bringing full metadata + response body back into memory); `HideDetail` calls `pFile->Release()` to detach. If `Request()` returns false (entry was re-fetched since the FILE was created, entry index mismatch), the detail pane shows "This data is no longer available." The `m_bDetailAttached` flag tracks whether the FILE is currently attached. `ReleaseDetailHandle()` is called from `HideDetail`, `ShowDetail` (on file switch), destructor, `ClearList`, and `RemoveFile`. Pimpl pattern. Z-order: toolbar/filter bar STATIC backgrounds use `WS_CLIPSIBLINGS`; combobox and checkbox brought to top via `SetWindowPos(HWND_TOP)` in `LayoutChildren` to prevent disappearing on resize. |
+| `IW_NETWORK` | `inspector/network` | **New Inspector** Network panel top-level layout. Inherits `INSPECTOR_WIDGET`. `Id()` returns `"network"`. `Initialize(Rml::Element*)` injects `s_sRml` (static RML string) into the container, then instantiates child widgets in a table-driven loop using `s_afnCreateWidget[kWIDGET_COUNT]`. Four child regions: `IW_NETWORK_TOOLBAR` (fixed height, 1 or 2 lines), `IW_NETWORK_WATERFALL` (fixed 120px height), `IW_NETWORK_BODY` (fills remaining vertical space), `IW_NETWORK_STATUSBAR` (fixed 39px height from bottom). Each region separated by 1px `#D4E3FD` separator lines. Static `Create()` factory returns `new IW_NETWORK`. |
+| `IW_NETWORK_TOOLBAR` | `inspector/network` | Toolbar component. Inherits `INSPECTOR_WIDGET`. `Initialize()` injects RML for: Record (●), Clear (Ø), Reset (↻), Filter (▼), Disable Cache checkbox, No Throttling label, Settings (⚙) — all as `div.toolbar-btn` inline-block elements with Unicode/HTML entity glyphs. Collapsible filter bar (second row): text input + 7 type-filter buttons (All, MSF, WASM, glTF, Socket, Img, Other). Filter toggle animates container height between 39px and 78px. Separator divs between logical groups. |
+| `IW_NETWORK_WATERFALL` | `inspector/network` | Horizontal timing waterfall (placeholder). Will display Chromium-style horizontal timing bars with time tick marks. Currently shows a header and empty bar area. |
+| `IW_NETWORK_BODY` | `inspector/network` | Body layout manager. Creates and manages three child regions: `IW_NETWORK_CONTAINERS` (200px sidebar), `IW_NETWORK_FILES` (fills remaining width), `IW_NETWORK_DETAILS` (not yet wired). Separated by 1px vertical `#D4E3FD` border. |
+| `IW_NETWORK_CONTAINERS` | `inspector/network` | Container/store sidebar. 39px header, scrollable item list below. Item 0 is always "(all)". Selected item highlighted with `#D3E3FD`. Click selection via `Rml::EventListener`. |
+| `IW_NETWORK_FILES` | `inspector/network` | Main file list. 39px header with 5 columns (Name 30%, Status 10%, Type 15%, Size 15%, Time 30%). Full-height 1px `#D4E3FD` column separator lines. Alternating row colors (`#F8FAFD`). Selected row: `#D3E3FD` background, `#0B57D0` text. |
+| `IW_NETWORK_STATUSBAR` | `inspector/network` | Status bar. Shows request count, filtered count, total transfer size. |
+| `IW_NETWORK_DETAILS` | `inspector/network` | Detail pane (placeholder). Will contain 4 sub-widget classes: `IW_NETWORK_DETAIL_HEADERS`, `IW_NETWORK_DETAIL_PREVIEW`, `IW_NETWORK_DETAIL_RESPONSE`, `IW_NETWORK_DETAIL_TIMING`. |
+
+### main.cpp and APP — Application Entry and Lifecycle
+
+`main.cpp` is a thin entry point: obtains `RUBIDIUM::APPNATIVE::GetInstance()` and calls `Run()`. On Windows, it uses `WinMain` with a temporary `AllocConsole()` for stdout/stderr. On other platforms, it uses standard `main()`.
+
+**Class hierarchy:** `APP` (abstract base, `App.h`/`App.cpp`) → `APPNATIVE` (Win32 derived, `App_Win32.h`/`App_Win32.cpp`). Other platforms will have their own `APPNATIVE` derivations.
+
+**`APP` base class** (`src/shell/App.cpp`): constructed with platform-resolved app data path + ILOGGER backend. Resolves `Metaversal/Rubidium/` directories, loads `settings.json` with `merge_patch` against defaults (so all keys the runtime reads always exist — prevents crashes from older/incomplete settings files). Destructor writes settings to disk. Owns `m_pLogger`, `m_sFontFamily`, `m_jSettings`, `m_sHomePath`, `m_mapSDLWindow`. Implements `SNEEZE::IENGINE` (`sAppDataPath()`, `sRenderer()` = `"halogen"`, `Log()`). Provides SDL window registry (`SDLWindow_Register`/`Unregister`/`Translate`).
+
+**`APPNATIVE::Impl::Run()`** (Win32, `src/shell/App_Win32.cpp`) is the platform startup sequence:
+
+- Sets DPI awareness (`DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`)
+- Registers window class (`RubidiumFrameClass`) and initializes common controls
+- Reads log level from settings via `m_pApp->SettingToJSON()["logger"]["level"]`, restores via `m_pApp->Logger()->LogLevel()`
+- Creates Sneeze engine (`new SNEEZE::ENGINE(m_pApp)` — `APP` implements `IENGINE`)
+- Resolves platform font family (`WINUTILS::DefaultFontFamily`/`FontFilePath`), stores via `m_pApp->sFontFamily()`, calls `Rml::LoadFontFace`
+- `SDL_Init(SDL_INIT_VIDEO)`
+- Creates initial window via `Window_Create(nullptr, kSESSION_PERSISTENT)`
+- Enters `EventLoop()`
+
+**`APPNATIVE::Impl::EventLoop()`** — the main loop:
+
+1. Drain Win32 message queue (`PeekMessageA` + accelerator dispatch to active window)
+2. Drain SDL event queue: `while (SDL_PollEvent(&Event)) m_pApp->SDLWindow_Translate(Event)` — dispatches each event to the registered `ISDLWINDOW` by window ID
+3. Call `pAppFrame->ProcessInput()` for ALL AppFrames (not just active — ensures scroll deltas reach unfocused viewports)
+4. `MsgWaitForMultipleObjects(0, nullptr, FALSE, INFINITE, QS_ALLINPUT)` — blocks until next input arrives
+
+**Shutdown:** last window's `Window_OnDestroy` calls `PostQuitMessage(0)`, loop exits, `SNEEZE::ENGINE` deleted, `APPNATIVE` destructor calls `DestroyLogger()` + deletes `m_pILogger`, then `~APP()` writes settings to disk.
+
+**SDL Event Dispatch Architecture:** SDL events are polled exactly once per frame in the main loop. `APP::SDLWindow_Translate(SDL_Event&)` extracts the `windowID` from the event (switch on event type → appropriate union member), looks up `m_mapSDLWindow` (unordered_map, O(1)), and calls `HandleEvent()` on the matching `ISDLWINDOW`. Currently two implementors: `CANVAS` (input state accumulation) and `RMLUI_SDL` (RmlUi event routing + immediate render). This eliminates competing `SDL_PollEvent` loops and guarantees no event is consumed by the wrong window.
+
+Engine types are referenced with fully qualified `SNEEZE::CORE::`, `SNEEZE::renderer::`, `SNEEZE::view::` prefixes. No `using namespace SNEEZE;` — keep the boundary visible.
+
+### Design Principles (Rubidium-Specific)
+
+- **Engine boundary is sacred.** Rubidium never includes Sneeze's internal headers directly. It uses the public module interfaces. The engine has no SDL3 dependency — Rubidium passes raw input deltas.
+- **Namespace everything.** All Rubidium code in `RUBIDIUM::` (no module sub-namespaces — classes live directly in the top-level namespace). Sneeze types are always fully qualified (`SNEEZE::CORE::`, `SNEEZE::renderer::`, etc.).
+- **Chrome is Rubidium's domain.** URL bar, menus, toolbars, browser settings — all Rubidium. RmlUi (in Sneeze) handles in-world 3D UI; never the browser chrome.
+
+### Logging Architecture
+
+Two logging paths exist — one for Rubidium code, one for Sneeze code — both producing identical formatted output.
+
+**Rubidium-side:** `LOGGER*` is owned by `APP` (created at construction) and passed to `APPFRAME` instances via their constructor. All Rubidium modules call `m_pLogger->Log(LOGGER::kLOGLEVEL_Info, "MODULE", "message")`. The `LOGGER` class queues messages on a background thread, formats them with timestamp + level + module tag, and dispatches to `ILOGGER_NATIVE::onMessage()` (which calls `std::printf` on Windows, `SDL_Log` on other platforms). The formatter does NOT append `\n` — the output backend owns line termination.
+
+**Sneeze-side:** No global logger. Every Sneeze module receives a `CORE::SNEEZE*` pointer (stored as `m_pSneeze`) via its constructor or `Initialize()` method. Modules call `m_pSneeze->Log(CORE::SNEEZE_LISTENER::kLOGLEVEL_Info, "MODULE", "message")`. `SNEEZE::Log()` delegates to the `ISNEEZE` interface, which `APP` implements by forwarding to `m_pLogger->Log()`. This keeps the engine free of globals while providing structured logging through the host interface.
+
+**Log levels:** `kLOGLEVEL_Trace` (teardown phases, FPS telemetry, metronome stats, WASM instance lifecycle), `kLOGLEVEL_Info` (module initialization, version banners, startup milestones), `kLOGLEVEL_Warning` (XR runtime not detected, non-fatal library load failures), `kLOGLEVEL_Error` (initialization failures, compile errors, runtime errors), `kLOGLEVEL_Off` (suppresses all log output).
+
+**User-configurable log level:** The ellipsis menu contains a "Log Level" submenu with radio-checked items (Trace, Info, Warning, Error, Off — separator before Off). Selecting an item calls `m_pLogger->LogLevel(level)` immediately and writes the level as a lowercase string (`"trace"`, `"info"`, `"warning"`, `"error"`, `"off"`) to `settings.json` at `logger.level`. On startup, `APP::Run()` reads `logger.level` from settings and restores it (defaults to `"info"` if the key is missing, covering existing settings files). The checkmark updates each time the menu opens via `UpdateLogLevelMenu()` called from `ShowEllipsisMenu()`.
+
+**MSF_FILE special case:** `MSF_FILE` is a standalone utility class used by both the engine and CLI tools (`SignMsf`). Its constructor takes an optional `CORE::SNEEZE* pSneeze = nullptr`. When non-null, errors route through `m_pSneeze->Log()`. When null (CLI tool context), errors fall back to `std::fprintf(stderr, ...)`.
+
+**No `printf` / `fprintf` in module code.** All logging goes through the logger. The only remaining `std::printf` is inside `ILOGGER_NATIVE::onMessage()` (the output backend itself). `std::snprintf` for buffer formatting (e.g., FPS string, SHA hex) is acceptable — it's writing to a buffer, not to stdout.
+
+### Coding Conventions (C++)
+
+These conventions match Sneeze and carry over from the existing JavaScript codebase:
+
+- **3-space indentation.** Not 2, not 4, never tabs.
+- **Allman brace style.** Opening `{` on its own line.
+- **Hungarian notation.** All variables carry type prefixes: `p` pointer/object, `d` double/float, `n` number, `s` string, `b` bool, `a` array, `tm` time, `fn` function.
+- **No abbreviated variable names.** Local and member variables must be descriptive: `nWidth` not `nW`, `nHeight` not `nH`, `nTab` not `n`, `hTab` not `h`, `Rect` not `rc`, `WindowPlacement` not `wp`, `WndClassExW` not `wc`, `hMonitor` not `hMon`, `InitCommonControls` not `icc`. Win32 struct-type locals use the type name directly (e.g., `RECT Rect`, `WINDOWPLACEMENT WindowPlacement`, `WNDCLASSEXW WndClassExW`).
+- **Types, classes, constants, namespaces: ALL CAPS.** `CANVAS`, `CELESTIAL`, `ORBIT`, `RMCOBJECT`, `namespace RUBIDIUM`, `namespace SNEEZE`.
+- **Functions: Capital first letter.** `Initialize()`, `PollEvents()`, `ComputeOrbital()`.
+- **Getter/setter naming: no `Get` prefix, overloaded setters.** Getters drop the `Get` prefix: `NativeWindow()` not `GetNativeWindow()`, `Width()` not `GetWidth()`, `JSON()` not `GetJSON()`, `LogLevel()` not `GetLogLevel()`. Setters use the same name as the getter, overloaded by parameter: `UrlText()` (getter) / `UrlText(const std::string&)` (setter), `LogLevel()` (getter) / `LogLevel(eLOGLEVEL)` (setter). Exception: `GetInstance()` on singletons is kept as-is (it's a factory/accessor, not a property getter).
+- **Single return at end.** One `return` statement, last line of function. No early returns — use inverted guard conditions or wrap the body in `if` blocks to reach a single exit point.
+- **Cross-language invariance.** Class names and algorithms must remain identical across JS and C++ implementations.
+- **Proprietary copyright header** on every `.h` and `.cpp` file: `// Copyright 2026 Metaversal Corporation. All rights reserved.`
+- **Traditional include guards** on every `.h` file: `#ifndef RUBIDIUM_MODULE_FILENAME_H` / `#define RUBIDIUM_MODULE_FILENAME_H` / `#endif`.
+
+### Dependencies
+
+Rubidium has two direct dependencies:
+
+| Dependency | Version | Source | Purpose | Owner |
+|------------|---------|--------|---------|-------|
+| **Sneeze** | (from `VERSION`) | `../Sneeze` (or `SNEEZE_DIR`) | Engine library — rendering, compute, sandboxing, networking | Compiled inline via `add_subdirectory` |
+| **SDL3** | 3.4.2 | [libsdl-org/SDL](https://github.com/libsdl-org/SDL) | Windowing, input, framebuffer display (static linked) | Built by Rubidium deps tree (`deps/sdl3.cmake`) |
+
+All of Sneeze's transitive dependencies (ANARI, Wasmtime, SPIRV-Tools, OpenXR, curl, RmlUi, glslang, nlohmann/json) propagate automatically through CMake PUBLIC link declarations. Rubidium never configures or finds those — Sneeze handles them. The Updater and GenerateManifest build tool use nlohmann/json for JSON parsing.
+
+**Build-time prerequisites (installed by the developer):**
+
+| Tool | Purpose |
+|------|---------|
+| CMake 3.20+ | Build system generator |
+| C/C++ compiler (C++17) | MSVC 2022, GCC, or Clang |
+| Git | Cloning SDL3 |
+| NSIS (Windows, packaging only) | Generates Windows installer (no plugins required) |
+
+Rust and Python are NOT needed for Rubidium — those are Sneeze build-time deps only.
+
+### Build System
+
+Rubidium has **two fully independent CMake trees**, mirroring Sneeze's architecture. There is **no top-level `CMakeLists.txt`** — the scripts in `scripts/` are the only glue.
+
+- **`deps/CMakeLists.txt`** — Standalone deps project. `cmake -S deps` builds SDL3. Never references `src/`. Derives `RUBIDIUM_CONFIG`, `RUBIDIUM_PLATFORM`, `RUBIDIUM_DEP_REPO`, `LIBS_DIR` if not passed explicitly.
+- **`deps/sdl3.cmake`** — Single `ExternalProject_Add` for SDL3. Clones into `${RUBIDIUM_DEP_REPO}/SDL3/` (shared across configs), builds + installs under `${LIBS_DIR}/SDL3/`.
+- **`src/CMakeLists.txt`** — Standalone Rubidium project. `cmake -S src`. Finds SDL3 under `${RUBIDIUM_LIBS_DIR}/SDL3/install/`. Compiles Sneeze inline via `add_subdirectory("${SNEEZE_DIR}/src" "${SNEEZE_DIR}/builds/${RUBIDIUM_PLATFORM}/build")` — sets `LIBS_DIR = SNEEZE_LIBS_DIR` before the call so Sneeze finds its own deps, and sets `SNEEZE_BUILD_ROOT = ${SNEEZE_DIR}/builds/${RUBIDIUM_PLATFORM}` so all Sneeze build activity (intermediates and final outputs) stays under Sneeze's own folder. Forces Rubidium output to `${RUBIDIUM_BUILD_ROOT}/install/$<LOWER_CASE:$<CONFIG>>/bin` via generator-expression-backed output directories (`CMAKE_RUNTIME_OUTPUT_DIRECTORY`, `CMAKE_LIBRARY_OUTPUT_DIRECTORY`, `CMAKE_ARCHIVE_OUTPUT_DIRECTORY`) — a single multi-config CMake tree emits both Debug and Release into per-config install siblings. SDL3 imported targets are dualized (manual `IMPORTED_LOCATION_DEBUG`/`_RELEASE` set by walking `_rubidium_dualize_target` — same pattern Sneeze uses for its own deps). `CMAKE_CONFIGURATION_TYPES` is forced to `"Debug;Release"` **before** `project()` so VS/Xcode/Ninja-MC don't probe `MinSizeRel` / `RelWithDebInfo` (which have no deps trees on disk). Source files organized by module: `SHELL_SOURCES`/`SHELL_HEADERS` (per-platform via `if(WIN32)/else`), `CANVAS_SOURCES`, `ASTRO_SOURCES`, `UPDATER_SOURCES`, `LOGGER_SOURCES`. Defines the `Rubidium` executable target (with `rubidium.rc` on Windows for embedded icon), links `Sneeze`, `SDL3::SDL3-static`, and on Windows: `dwmapi`, `comctl32`, `uxtheme`. Post-build copies `anari_library_halogen.dll` and `wasmtime.dll` from `SNEEZE_LIBS_BASE_GEN` (config-aware form of `SNEEZE_LIBS_DIR`). Also defines the `RubidiumSetup` target, `GenerateManifest`, `package_register`/`package_promote` convenience targets. CPack output directory is per-config (`install/<config>/pkg/`) via a generated `CPackProjectConfig.cmake` that reads `CPACK_BUILD_CONFIG` at CPack time (generator expressions don't work in CPack vars).
+- **`scripts/build-{windows.ps1,linux.sh,macos.sh}`** — Platform build drivers. Default (no flag): plain `cmake --build` (no dep checks, no configure). `-Deps`/`--deps`: builds deps only. `-All`/`--all`: deps flow, then `cmake -S src` configure + build. `-Fresh`/`--fresh`: **configure-only** — passes `cmake --fresh` (CMake 3.24+) to wipe `CMakeCache.txt` + `CMakeFiles/` and regenerate the project files, but does NOT build. To build afterward, run the script again with no flags. `-Fresh -Rebuild`/`--fresh --rebuild` composes: fresh configure + clean + build. Renamed from the earlier `-Configure` to avoid collision with `-Config Debug|Release`. `-All`'s reconfigure stays non-destructive. Stamp-cached: built deps are skipped on subsequent runs.
+- **`-Rebuild` / `--rebuild` is a modifier, NOT a mode.** It composes with whatever target set is selected by the other flags — it does not pick a target set on its own. Matrix: `-Rebuild` alone → clean + rebuild **Rubidium, current config only**, via `cmake --build <build-dir> --target clean --config <cfg>` against the existing `builds/<platform>/build/` tree (preserves `CMakeCache.txt`, `CMakeFiles/`, and the generated `Rubidium.sln`/`.vcxproj` so Visual Studio keeps working), plus `rm -rf builds/<platform>/install/<cfg>/` for the current `-Config`. The OTHER config's intermediates (inside `build/`) and its `install/<other>/` are left alone. If the tree has never been configured, falls back to a full configure + build. `-Rebuild -Deps` → scrub + rebuild all deps (wipes `deps/builds/<platform>/<config>/`). `-Rebuild -Only <dep>` → scrub + rebuild one dep (its stamp, ExternalProject prefix, and `libs/<dep>/`). `-Rebuild -All` → scrub + rebuild deps, then Rubidium. Source clones in `deps/repos/` are never scrubbed. **HARD RULE:** the deps folder is only ever modified when `-Deps`, `-Only`, or `-All` is present — `-Rebuild` alone (or `-Fresh` alone) cannot touch a single bit inside `deps/`. This parallels the CMakeLists-level invariant that `deps/CMakeLists.txt` and `src/CMakeLists.txt` never reference each other's trees.
+  - **Earlier buggy semantics (fixed).** Before the port from Sneeze (2026-04-20), Rubidium's `-Rebuild` was a MODE — the script's `$DepsMode` trigger included `$Rebuild`, so `-Rebuild` alone implied `-Deps` and scrubbed the dep root instead of the Rubidium tree. Fixed by removing `$Rebuild` from the mode trigger, adding `$RubidiumOutDir` scrub when `-Rebuild -and $RubidiumMode`, and wiring `$Reconfigure = [bool]($All -or $Fresh -or ($Rebuild -and $RubidiumMode))`. Same fix applied to `build-linux.sh` and `build-macos.sh`: `--rebuild` captured as a separate `REBUILD=1` flag instead of being lumped into `DEPS_FORWARD`, then forwarded to `build-deps.sh` only when `DEPS_MODE=1 && REBUILD=1`.
+- **ExternalProject configure-stamp invalidation.** All scripts (including `build-deps.sh`) call `Invalidate-DepConfigure` / `invalidate_dep_configure` before each dep's build. Removes `$DepsBuildDir/<dep>-prefix/src/<dep>-stamp/<Config>/<dep>-configure`. ExternalProject_Add only re-runs its configure step if that stamp is missing; when a dep's configure succeeds but its build fails, the stamp stays and a later retry reuses cached CMAKE_ARGS even if `deps/<dep>.cmake` changed. Invalidating it forces the retry to pick up the current args. Matches Sneeze's behavior exactly.
+- **`scripts/build-deps.sh`** — Shared bash helper for Linux/macOS dep iteration.
+
+### Build Commands (Quick Reference)
+
+```powershell
+# --- Windows (PowerShell) ---
+# THE day-to-day command -- compile + link Rubidium only (seconds)
+.\scripts\build-windows.ps1                    # Release (default)
+.\scripts\build-windows.ps1 -Config Debug      # Debug
+
+# First-time setup: build SDL3 + configure + build Rubidium
+.\scripts\build-windows.ps1 -All
+.\scripts\build-windows.ps1 -All -Config Debug
+
+# Refresh deps only (SDL3 changed upstream, rare)
+.\scripts\build-windows.ps1 -Deps
+.\scripts\build-windows.ps1 -Only sdl3 -Rebuild   # full-scrub one dep
+
+# Run the application
+builds\windows-x64\install\release\bin\Rubidium.exe
+```
+
+```bash
+# --- Linux / macOS ---
+./scripts/build-linux.sh                       # Release (default)
+./scripts/build-linux.sh --config Debug        # Debug
+./scripts/build-macos.sh                       # macOS Release
+./scripts/build-linux.sh --all                 # First-time setup
+./builds/linux-x64/install/release/bin/Rubidium # Run
+```
+
+### CI / CD
+
+Rubidium uses a split CI strategy:
+
+| Platform | System | Config |
+|---|---|---|
+| Linux, macOS, iOS, Android, Quest | GitHub Actions (`.github/workflows/build.yml`) | Runs on every push to `main`, PRs, and manual dispatch. Downloads pre-built Sneeze libs from the Sneeze repo's CI artifacts. Builds SDL3 from source (cached). |
+| Windows x64 | Jenkins (`Jenkinsfile`) | Runs on a dedicated Windows server. Builds Sneeze from source (15 deps, stamp-cached) because Sneeze CI doesn't produce Windows artifacts. Poll SCM trigger. |
+
+**Why Jenkins for Windows?** Sneeze CI currently has no Windows build job. The GitHub Actions approach used by other platforms (download pre-built Sneeze libs as artifacts) doesn't work for Windows. A dedicated Jenkins server with persistent workspace lets Sneeze's 15-dep build (~60 min first time) stay stamp-cached across runs — subsequent builds only rebuild changed deps and recompile Rubidium.
+
+**Jenkins setup:** Freestyle job with GitHub plugin for SCM polling. Single build step:
+```
+powershell -ExecutionPolicy Bypass -File scripts\ci-windows.ps1
+```
+The `ci-windows.ps1` script clones/updates Sneeze, builds everything via the existing `build-windows.ps1` scripts, and generates the NSIS installer.
+
+**Jenkins prerequisites:** Visual Studio 2022, CMake 3.24+, Git, Rust/Cargo, Python 3, Go, NASM, NSIS. The agent must run in a "Developer PowerShell for VS 2022" environment. Environment variable `SNEEZE_REPO_URL` must point to the Sneeze Git clone URL.
+
+**Imported-target include-dir dualization is on-disk-conditional.** Rubidium's multi-config CMake tree (`CMAKE_CONFIGURATION_TYPES = Debug;Release`) plus the SDL3 imported-target dualization in `_rubidium_dualize_target` would, if applied unconditionally, rewrite `INTERFACE_INCLUDE_DIRECTORIES` to `…/$<LOWER_CASE:$<CONFIG>>/libs/SDL3/install/include`. CMake validates that genex per entry in `CMAKE_CONFIGURATION_TYPES` at generate time — so a tree with only one config's deps on disk would fail with `Imported target "SDL3::SDL3-static" includes non-existent path …/debug/libs/SDL3/install/include`. `_rubidium_dualize_target` therefore checks both `/debug/…` and `/release/…` resolutions of each include path on disk, and only emits the genex when both exist. When only one exists (e.g. Jenkins built only Release), the include path stays concrete to whatever `find_package` just resolved, which is always valid because the headers are config-invariant for the deps Rubidium ships. Library locations (`IMPORTED_LOCATION_*`, `IMPORTED_IMPLIB_*`) are still dualized unconditionally because CMake validates those lazily — at link time, per config built, not at generate. The Sneeze workspace on Jenkins agents typically has both deps configs because Sneeze's CI builds both; that's why Sneeze's transitively-imported targets don't trip the same generate-time validation.
+
+### Hand-Maintained MSVC Projects (Windows Primary Dev Workflow)
+
+On Windows, the Visual Studio solution is the **primary development artifact** — hand-maintained `.sln` and `.vcxproj` files live in `msvc/` and are checked into Git. This addresses two pain points: (1) adding files in CMake requires editing `CMakeLists.txt` and reconfiguring, while VS adds them to the `.vcxproj` automatically; (2) CMake-generated solutions are unstable (regenerate on every configure, breaking open VS instances).
+
+**Architecture:**
+- `Rubidium/msvc/Rubidium.sln` — references three projects: `Rubidium.vcxproj` (local), `../../Sneeze/msvc/Sneeze.vcxproj` (cross-repo), `../../Sneeze/msvc/SneezeTest.vcxproj` (cross-repo). Both Debug|x64 and Release|x64 configurations. Rubidium depends on Sneeze; SneezeTest depends on Sneeze.
+- `Rubidium/msvc/Rubidium.vcxproj` — hand-maintained project for the Rubidium executable. Uses MSBuild property macros for portable paths: `$(RubidiumRoot)` = `$(MSBuildProjectDirectory)\..`, `$(SneezeRoot)` = `$(RubidiumRoot)\..\..\Sneeze`, `$(SneezeDepsRoot)` = `$(SneezeRoot)\deps\builds\windows-x64`, `$(RubidiumDepsRoot)` = `$(RubidiumRoot)\deps\builds\windows-x64`, `$(CfgLower)` = `$([System.String]::new('$(Configuration)').ToLower())`. Source files use relative paths from `msvc/` (e.g., `../src/shell/App.cpp`). Include directories, preprocessor definitions, link libraries, and post-build DLL copies all use the macros. Output goes to `$(RubidiumBuildRoot)\install\$(CfgLower)\bin\`.
+- `Rubidium/msvc/Rubidium.vcxproj.filters` — mirrors `src/` directory structure (shell, canvas, rmlui_sdl, inspector, inspector/network, logger, settings, updater, astro, pkg).
+- `Sneeze/msvc/Sneeze.vcxproj` — hand-maintained project for the Sneeze static library. Uses `$(SneezeRoot)`, `$(SneezeDepsRoot)`, `$(CfgLower)` macros.
+- `Sneeze/msvc/SneezeTest.vcxproj` — hand-maintained project for Sneeze's test suite (console app). Links `Sneeze.lib` + all Sneeze deps. Post-build copies `wasmtime.dll`.
+- `.vcxproj.user` files are gitignored (personal debug settings like working directory).
+
+**Precompiled headers:**
+- The hand-maintained `.vcxproj` uses a traditional `pch.cpp` / `pch.h` pair (`<PrecompiledHeader>Create</PrecompiledHeader>` on `pch.cpp`). This file exists at `src/pch.cpp` and is checked in.
+- CMake's `target_precompile_headers` generates its own separate `cmake_pch.cxx`. The two approaches don't conflict — CMake ignores `pch.cpp`, and the hand-maintained project ignores `cmake_pch.cxx`.
+- Sneeze has the same pattern: `src/sneeze/Pch.cpp` for the hand-maintained project, CMake generates its own PCH source.
+
+**Version header generation:**
+- CMake generates `version.h` from `src/version.h.in` via `configure_file()`.
+- The hand-maintained project generates `version.h` via a PowerShell `PreBuildEvent` that reads `VERSION` and substitutes into `version.h.in`, outputting to `$(IntDir)version.h`. The `$(IntDir)` is added to `AdditionalIncludeDirectories` for both `ClCompile` and `ResourceCompile` so the compiler and RC compiler can find it.
+
+**Sync workflow (AI-driven):**
+- The `.vcxproj` is the source of truth for source file lists on Windows. When files are added or removed in Visual Studio, they are automatically reflected in the `.vcxproj`.
+- The `sync-build` skill (`.cursor/skills/sync-build.md`) synchronizes the hand-maintained `.vcxproj` with `src/CMakeLists.txt`. Invoked by saying "sync build" or "sync cmake".
+- Procedure: generates a reference `.vcxproj` from CMake, compares file lists (normalizing paths), categorizes differences, and updates `CMakeLists.txt` to match.
+- Expected permanent divergence: `src/pch.cpp` appears only in the hand-maintained project (CMake doesn't need it).
+- Sneeze has its own independent `sync-build.md` skill with the same pattern.
+
+**Coexistence with CMake:**
+- The CMake build (`scripts/build-windows.ps1`) continues to work independently — it generates its own `.sln` under `builds/windows-x64/build/`. That generated solution is gitignored.
+- The hand-maintained `msvc/Rubidium.sln` is what developers open day-to-day on Windows. The CMake-generated solution is used by CI and cross-platform builds.
+- Both workflows produce output in the same locations (`builds/windows-x64/install/<config>/bin/`).
+
+### Known Gotchas
+
+- **Sneeze must be built first.** Rubidium's `add_subdirectory` needs Sneeze's installed dependencies at `Sneeze/deps/builds/<platform>/<config>/libs/`. Run Sneeze's build script before the first Rubidium build.
+- **SDL pixel format must match ANARI byte layout.** ANARI's `ANARI_UFIXED8_RGBA_SRGB` writes R,G,B,A bytes. On little-endian Windows, `SDL_PIXELFORMAT_ABGR8888` matches. If colors look wrong (everything tinted blue/red), the pixel format is the first thing to check.
+- **DLL copying.** The post-build step copies `wasmtime.dll` and `anari_library_halogen.dll` from `SNEEZE_LIBS_DIR`. SDL3 is now static and anari core is static. If the application fails to start with "DLL not found", verify the post-build step ran and the DLLs exist in the Sneeze deps install tree.
+- **Two separate build trees.** `deps/builds/` holds SDL3. `builds/` holds Rubidium output. They are completely independent. Deleting `builds/<platform>/` for a clean Rubidium rebuild does not re-clone SDL3. Source clones in `deps/repos/` are shared across configs and survive any `builds/` cleanup. `-Rebuild` is gentler than a directory wipe: it runs `cmake --build --target clean --config <cfg>` to drop only the current config's compiled artifacts, leaving `CMakeCache.txt` + the generated `.sln`/`.vcxproj` intact (so an open Visual Studio solution stays valid), then wipes `install/<cfg>/`. The other config's `install/<other>/` is preserved.
+- **Debug/Release separation (deps only).** The **deps** tree is per-config: `deps/builds/<plat>/debug/` vs `deps/builds/<plat>/release/` — never mix them (`_ITERATOR_DEBUG_LEVEL` mismatch on MSVC will produce link errors). The **Rubidium** tree at `builds/<plat>/build/` is now a single multi-config CMake tree (VS/Xcode/Ninja-MC) that emits into `install/debug/` or `install/release/` depending on the config selected via the IDE dropdown or `cmake --build --config`. Both configs build against their respective per-config deps tree — both deps trees must exist on disk for both dropdown options to work.
+- **Multi-config generator expressions.** Paths that used to be pinned per configure (`${SNEEZE_LIBS_DIR}/...`, imported-target `IMPORTED_LOCATION`) are now built from base paths + `$<LOWER_CASE:$<CONFIG>>` so they resolve at build time. Sneeze's `src/CMakeLists.txt` (path generalization block) rewrites both scalar path variables and transitive imported-target properties across `anari::anari_static` + `vox::vox`; Rubidium's `src/CMakeLists.txt` does the same for SDL3. The rewriter has a `_resolve_variant` helper that probes disk for Debug-suffix filename variants (`libcurl-d.lib` vs `libcurl.lib`, `openxr_loaderd.lib`, `spirv-cross-cored.lib`) because simple path substitution doesn't cover those name changes.
+- **Debug library name suffixes (Sneeze-side).** Several Sneeze deps append `d` to library names in Debug builds: `openxr_loaderd.lib`, `libcurl-d.lib`, `spirv-cross-cored.lib` / `spirv-cross-glsld.lib` / `spirv-cross-hlsld.lib`. Sneeze's find modules (`FindSneezeOpenXR.cmake`, `FindSneezeCurl.cmake`) and Vox's `vox-config.cmake.in` list both Release and Debug names. If a new dep exhibits the same pattern, add both name variants to its find module.
+- **Inspector toolbar controls disappear on resize if z-order is wrong.** The toolbar and filter bar use `STATIC` background windows for painting. Without `WS_CLIPSIBLINGS` on those STATICs, they paint over sibling controls (combobox, checkbox) during resize. Fix: `WS_CLIPSIBLINGS` on the background STATICs + `SetWindowPos(HWND_TOP)` for the combobox and checkbox at the end of `LayoutChildren`.
+- **Inspector `WM_GETMINMAXINFO` arrives before `WM_CREATE`.** The `pImpl` pointer is NULL when this message fires, so it must be handled unconditionally before the `if (!pImpl)` guard in the WndProc.
+- **ListView virtual mode (`LVS_OWNERDATA`) and owner-drawn buttons (`BS_OWNERDRAW`) have focus quirks.** Owner-drawn buttons retain `ODS_FOCUS` after click, leaving a persistent highlight. Fix: `SetFocus(hWnd)` after each button click to yank focus back to the parent, plus custom subclass (`ToolbarBtnSubclass`) for explicit hover tracking via `TrackMouseEvent`.
+- **Sneeze `CACHE::MANAGER::Files()` (formerly `GetHistory()`) renamed in Sneeze as of 2026-05-01.** Rubidium `Tab_Network.cpp` must use `Files()` not `GetHistory()`.
+- **Sneeze `CACHE::FILE` snapshot/attach lifecycle (as of 2026-05-02).** FILE objects carry snapshot fields (URL, state, size, content-type, timing, HTTP status, etc.) that survive `Release()`. After release, `m_pEntry` is null and the ENTRY may be evicted from memory, but the FILE's snapshot fields remain valid for list view display. To access ENTRY-dependent data (headers map, response body, disk path, access stats), call `pFile->Request()` to reattach — returns `true` on success, `false` if the entry was re-fetched (nEntryIx mismatch). Call `pFile->Release()` when done. The inspector's detail pane uses this: `ShowDetail` calls `Request()`, `HideDetail` calls `Release()`. The list view never needs to attach — snapshot fields are always available.
+- **Detail pane must use a custom window class, not SS_OWNERDRAW STATIC.** `SS_OWNERDRAW` STATIC controls do not receive `WM_LBUTTONDOWN` messages in their subclass — they send `STN_CLICKED` to their parent. The detail panel registers `RubidiumDetailPanel` as a `WNDCLASSEXW` with its own `DetailPanelWndProc` to handle tab clicks, close button, and scroll events directly.
+- **`CACHE::FILE::FetchDuration()` returns seconds, not milliseconds.** `FormatDuration()` expects milliseconds. Always multiply by 1000.0 before passing to `FormatDuration`. Cache-hit files have `FetchStartTime() == 0.0` and `FetchDuration() == 0.0` — display as `(cache)` in the Time column, not `pending`.
+- **Windows Terminal ignores legacy console APIs.** On Windows 11, `SetCurrentConsoleFontEx` and `SetConsoleWindowInfo` have no effect when the default terminal is Windows Terminal. Console font/size customization requires Windows Terminal's own settings (JSON profiles) or is deferred until Rubidium has its own GUI. Don't waste time on `SetConsoleFont` calls.
+- **nlohmann/json default-constructed objects are `null`, not `{}`.** `nlohmann::json j;` creates a null value. Calling `.value()` on null throws `json::type_error`. Always initialize to `nlohmann::json::object()` when the code expects a JSON object (e.g., `LoadUpdatesJson`). This was a silent crash that caused `RubidiumSetup.exe --check` to appear to do nothing on first run.
+- **DWM frame extension must match title bar height.** `DwmExtendFrameIntoClientArea` top margin tells the DWM where its caption buttons go. If the margin doesn't match the custom title bar height, DWM buttons appear misaligned (gap below or above). Always pass `pImpl->nTitleBarHeight` as the top margin.
+- **Title bar height: sum then scale.** Compute as `SM_CYCAPTION + 2 * SM_CYBORDER`, then DPI-scale the sum once via `MulDiv(sum, dpi, 96)`. Scaling each metric individually and summing loses fractional pixels, making the title bar 1-2px too short.
+- **Child window subclassing for resize grips.** The viewport STATIC and its SDL child cover the frame edges, eating `WM_NCHITTEST` for resize. Both must be subclassed to return `HTTRANSPARENT` near the parent's border region. The SDL child is created by SDL *after* `APPFRAME::Initialize`, so subclassing must happen in `PollEvents` (checked each frame until child appears, then `bChildrenSubclassed` flag prevents repeat).
+- **Rendering pipeline: native surface rendering at 60 FPS (updated 2026-04-29).** Halogen/Filament renders directly to the platform window's Vulkan swapchain via the `HALOGEN_NATIVE_SURFACE` ANARI extension — zero CPU copies, zero readback. The compositor passes the native window handle (HWND on Windows) from `CANVAS::NativeWindowHandle()` to `RENDERER::SetNativeWindow()` before initialization. When `IsRenderingToNativeSurface()` is true, the publish block is skipped entirely (no `GetFrameBuffer`, `WriteFrameBuffer`, `OnFrameReady`, no SDL texture upload). Filament owns presentation and vsync via its internal Vulkan swapchain. FPS telemetry: `frame ~16.8ms | submit ~0.1ms | render ~16.7ms` — the "render" time is dominated by vsync wait (`anariRenderFrame` + `anariFrameReady`), actual GPU work is sub-millisecond for the current solar system demo. The old GPU→CPU→GPU readback path (30 FPS, three full-frame memcpys) is still available as a fallback when `HALOGEN_NATIVE_SURFACE` is not supported or the renderer doesn't set a native window. Resize is handled by `ANARI_RENDERER::Resize()` which recreates the native surface object at the new dimensions (Filament's swapchain recreates automatically). Minor visual flicker during fast resize drags is expected — Filament briefly destroys and recreates the Vulkan swapchain, causing 1-2 frames of DWM background to show through.
+- **Multi-window shutdown ordering.** Each `APPFRAME_NATIVE` window receives `WM_CLOSE` → `WM_DESTROY`. On `WM_DESTROY`, the window calls `m_pController->Window_OnDestroy(this)`, which removes it from `APP::m_apAppFrame`, saves window geometry (only on last-window-close), deletes the `APPFRAME_NATIVE`, and calls `PostQuitMessage(0)` when the vector is empty. The message loop in `APP::PollEvents` then exits, `Sneeze.Shutdown()` runs (tears down Filament/Vulkan while the process is still alive), and `APP::Run()` returns. `PostQuitMessage` is NEVER called from `APPFRAME` — only the controller decides when to quit. If `DestroyWindow` is called in `WM_CLOSE` (the traditional pattern), Filament's deferred commit buffer flushes during `anariRelease(device)` and attempts `vkCreateSwapchainKHR` on the dead HWND, producing `vkCreateSwapchainKHR failed. error=-1`.
+- **`SetSneeze` timing is critical.** `pCanvas.SetSneeze(&pSneeze)` must be called AFTER `pSneeze.Initialize()` completes. If called before `pAppFrame.Initialize()`, `WM_SIZE` fires during window creation, `Canvas::Resize` forwards to `Sneeze::Resize` before Sneeze is initialized, queueing a stale pending resize. When Sneeze later starts, it immediately applies the stale size (different from the dimensions passed to `Initialize`), causing a framebuffer/texture dimension mismatch that makes every frame get dropped. Diagnosed 2026-04-28 via instrumented logging.
+- **Resize pipeline: AppFrame → Canvas → Sneeze → Compositor.** `onSize` (Win32) calls `Canvas::Resize` which holds `m_textureMutex`, recreates the SDL texture, calls `SDL_SetWindowSize`, and forwards to `Sneeze::Resize`. Sneeze queues the resize (mutex-protected pending flag). The compositor thread calls `ConsumePendingResize` each frame and calls `RENDERER::Resize` (recreates ANARI frame, NOT full device teardown). `Canvas::Present` also holds `m_textureMutex` and drops frames where incoming dimensions don't match texture dimensions. This prevents the `SDL_UpdateTexture` buffer overrun that was crashing the app during vertical resizes (confirmed via debugger — `memmove`/`memcpy` overwrite).
+- **Native surface rendering Y-axis orientation.** Halogen's native surface path (`HALOGEN_NATIVE_SURFACE`) produces astronomically correct Y orientation — verified against JPL Horizons ephemeris data for Mercury on 2026-04-30. The old readback path (pre-native-surface, `anariMapFrame` → `memcpy` → SDL texture) produced a Y-flipped image — Mercury appeared above the ecliptic when it should have been below. The flip was caused by the readback buffer having bottom-to-top row order (OpenGL convention) being copied directly to an SDL texture that expects top-to-bottom. The native surface path bypasses readback entirely; Halogen presents directly to the Vulkan/D3D swapchain with correct orientation. **Current status of the readback fallback:** forcing the readback path (by not calling `SetNativeWindow` on the renderer) produces a white/blank SDL window — Halogen appears to require a native surface to produce output in the current build. The readback path is non-functional with the current rendering architecture (compositor thread drives rendering). This is a known gap but not urgent — native surface is the primary and only active rendering path.
+- **RmlUi Inspector CSS layout conventions (established 2026-05-10, updated 2026-05-29).** All control bars (tab bar, toolbar, status bar, list headers, container header) use a consistent pattern: `height: 26dp` (tab bar is 27dp), `padding: 3-5dp`, `box-sizing: border-box`, with `vertical-align: middle` on inline-block children for text centering. **DPI scaling (completed 2026-05-29):** uses RmlUi's native `dp` unit for all layout dimensions (fonts, padding, heights, widths) — authored at 1x logical scale, automatically multiplied by `Rml::Context::SetDensityIndependentPixelRatio(SDL_GetWindowDisplayScale())` at layout time. Hairline borders use `1px` (always exactly 1 physical pixel regardless of scale). Active-tab accent borders use `2dp` (scale with content). The `{{FONT_NN}}` template placeholder system has been fully removed — no C++ string manipulation for sizing. Font family is injected into the CSS string via `[{FONT-FAMILY}]` token replacement BEFORE `LoadDocument()` — this ensures `font-family` is present during CSS parsing and avoids the "No font face defined" warnings that occur when setting it programmatically after load. The replacement uses `APPNATIVE::GetInstance()->sFontFamily()` (resolved at startup from platform-specific font APIs). `SDL_WINDOW_HIGH_PIXEL_DENSITY` flag is set on window creation. Render scale set to `SDL_GetWindowPixelDensity()` (handles macOS Retina). `RmlUi_Platform_SDL`'s `GetPixelDensity` lambda returns `SDL_GetWindowPixelDensity(target_window)` for correct mouse coordinate translation. Display scale changes are handled in real-time via `SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED` → `SetDensityIndependentPixelRatio`. Separator lines are exactly 1px `#D4E3FD` everywhere — `border-bottom-width: 1px` on the bar itself, never doubled. When an element's children are inline-block with their own padding, the parent's padding is set to `0` and children handle their own spacing (avoids double-padding that causes text misalignment). Column separators in the file list are full-height `position: absolute` divs with cumulative `left` percentages (not `border-right` on cells, which only extends the cell height). `overflow: hidden` on parent containers, `overflow: auto` on scrollable child areas. Font weight `bold` on tab bar only — all other text uses normal weight. **Nomenclature:** tab buttons use `id="tab-<name>"`, content areas use `id="panel-<name>"`, CSS classes are `.tab` and `.panel`. The word "widget" refers to a self-contained inspector sub-component (toolbar, statusbar, file list, etc.) that defines its own RML fragment and injects via `Element::SetInnerRML()`.
+- **Release PDBs with optimizations preserved (MSVC).** Both Rubidium's `src/CMakeLists.txt` and Sneeze's `src/CMakeLists.txt` enable PDB generation for Release builds via an `if (MSVC)` block placed **after** `project()` and **before** `add_subdirectory(Sneeze)` (Rubidium-side) / before any target definition (Sneeze-side). The flags are `/Zi` at compile (emits debug info into `.obj`) + `/DEBUG` at link (tells the linker to produce a `.pdb` next to the binary) + `/OPT:REF` + `/OPT:ICF` at link (force-re-enabled — `/DEBUG` alone silently disables those and would leave dead code and identical-function duplicates in the binary). Applied via `add_compile_options` / `add_link_options` with `$<CONFIG:Release>` generator expressions. PDBs land next to each `.exe` / `.lib`. Binary size and codegen are identical to a no-PDB Release build. The Rubidium-side block propagates into Sneeze's targets when Sneeze is built inline, so both ends get PDBs from a single Rubidium build.
+- **SDL event dispatch: single centralized poll loop (established 2026-05-29).** SDL events are polled exactly once per frame in `APPNATIVE::Impl::EventLoop()` via `while (SDL_PollEvent(&Event)) m_pApp->SDLWindow_Translate(Event)`. The `SDLWindow_Translate` method (in `APP` base class) extracts `windowID` from the event's union member (switch on event type), does an O(1) unordered_map lookup, and calls `HandleEvent()` on the matching `ISDLWINDOW`. **Never add a second `SDL_PollEvent` loop** — events consumed by one loop are invisible to others, causing dropped input. If a new SDL window is created, it must implement `ISDLWINDOW` and register via `APP::SDLWindow_Register()`. **ProcessInput vs HandleEvent:** `HandleEvent` updates raw input state (called per-event, may fire multiple times per frame); `ProcessInput` feeds accumulated deltas to the engine (called exactly once per frame per AppFrame). RmlUi windows call `Render()` at the end of `HandleEvent` for immediate repaint; CANVAS accumulates until `ProcessInput`. `ProcessInput` is called for ALL AppFrames, not just the active one — otherwise scroll deltas accumulated on unfocused windows are never consumed.
+- **RmlUi inspector rendering is event-driven, not polled.** `RMLUI_SDL::Render()` (context Update + Render) is called from `HandleEvent()` after each SDL event is processed (immediate repaint on interaction) and from `Toggle()` when showing the window. It is NOT called from any per-frame loop or timer. This means the inspector only repaints when it receives SDL input. **Future requirement:** when Sneeze cache events or console logs arrive asynchronously, they will need to trigger a `Render()` call — likely via `PostMessage` to wake `MsgWaitForMultipleObjects` followed by a dirty-flag-driven render. This is a known gap; rendering from data callbacks is not yet implemented.
+- **SDL3 `SDL_EVENT_WINDOW_MOVED` / `SDL_EVENT_WINDOW_RESIZED` fire once upon completion.** These are NOT continuous (unlike Win32's `WM_MOVE`/`WM_SIZE` which fire inside the modal drag loop). They fire a single time when the user finishes the interactive move or resize gesture. Safe to use for persistence without debouncing.
+- **Inspector window geometry persistence pattern.** `RMLUI_SDL` exposes `FN_WINDOW_GEOMETRY` callback (typedef: `void (*)(int nX, int nY, int nWidth, int nHeight, void* pUserData)`) + `SetGeometryCallback()`. `INSPECTOR_RML::Impl` registers a static `OnGeometryChanged` that writes to `settings.json["inspector_rml"]`. On init, reads stored x/y/width/height from settings (empty object = defaults), passes size to `Initialize()`, calls `SetPosition()` if stored position is valid (>= 0). Different from the main app window pattern (which only saves on last-window-close) — the inspector saves geometry on every completed move/resize, since there's only ever one inspector window and losing position on crash would be annoying.
+
+### Sneeze Inline-Build Isolation (Resolved 2026-04-21)
+
+All Sneeze build activity — intermediates (`.vcxproj`, `.obj`) and final outputs (`Sneeze.lib`, test/tool exes) — now stays entirely within `Sneeze/builds/<plat>/`. Nothing Sneeze-related is written under Rubidium's build tree (except a path reference inside `Rubidium.sln` pointing at the Sneeze `.vcxproj`).
+
+Two changes in `src/CMakeLists.txt` accomplished this:
+
+1. `set (SNEEZE_BUILD_ROOT "${SNEEZE_DIR}/builds/${RUBIDIUM_PLATFORM}")` — routes final outputs (`Sneeze.lib` → `Sneeze/builds/<plat>/install/<cfg>/lib/`, test/tool exes → `.../bin/`).
+2. `add_subdirectory ("${SNEEZE_DIR}/src" "${SNEEZE_DIR}/builds/${RUBIDIUM_PLATFORM}/build")` — routes all intermediates (`.vcxproj`, `.obj`, `.pch`, SPIR-V outputs) into `Sneeze/builds/<plat>/build/`.
+
+This is the same `build/` directory that Sneeze's standalone build uses. Standalone and inline builds overwrite each other at that location, which is acceptable — you're either building from Rubidium or from Sneeze standalone, not both simultaneously. If you switch between them, a reconfigure sorts it out.
+
+A third change — adding `CMAKE_ARCHIVE_OUTPUT_DIRECTORY` alongside the existing `CMAKE_RUNTIME_OUTPUT_DIRECTORY` / `CMAKE_LIBRARY_OUTPUT_DIRECTORY` settings in Rubidium's output dir block — eliminated stray empty `Debug/` and `Release/` folders that Visual Studio was creating under `Rubidium/builds/<plat>/build/` for any output type not explicitly redirected.
+
+**Important:** after changing `add_subdirectory`'s binary dir path, a fresh configure (`-Fresh`) is required. `-Rebuild` alone reuses the stale CMake cache and produces `_ITERATOR_DEBUG_LEVEL` mismatch link errors because the old cached paths still point at the previous binary dir.
+
+### Versioning
+
+Both Rubidium and Sneeze use semantic versioning (MAJOR.MINOR.PATCH). The version lives in a `VERSION` file at each repo root. Current Rubidium version: **0.0.1**. CMake reads this file at configure time via `file(STRINGS)` and uses it for `project(VERSION ...)`, compile definitions (`RUBIDIUM_VERSION`, `SNEEZE_VERSION`), and CPack naming.
+
+The `src/CMakeLists.txt` uses `set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/VERSION")` so that editing the `VERSION` file automatically triggers CMake re-configuration on next build — no manual `cmake -S . -B build` step needed. Just edit `VERSION` and build.
+
+**Version resource file (`src/rubidium.rc.in`, `pkg/setup.rc.in`):** Both Rubidium.exe and RubidiumSetup.exe embed a Windows `VERSIONINFO` resource with `FileVersion`, `ProductVersion`, `CompanyName` (Metaversal Corporation), `FileDescription`, `LegalCopyright`, and `ProductName`. CMake generates the `.rc` from `.rc.in` templates using `configure_file()`, substituting `PROJECT_VERSION_MAJOR/MINOR/PATCH`.
+
+### Installer and Auto-Updater
+
+Rubidium includes a CPack-based installer and a built-in auto-update module.
+
+**Installer (CPack):**
+- Windows: NSIS installer (`Rubidium-<version>-windows-x64.exe`). Installs to `Program Files\Metaversal\Rubidium`, creates Start Menu and Desktop shortcuts, supports uninstall via Add/Remove Programs. Uses `pkg/logo-rounded.ico` for installer and uninstaller icons. Displays `pkg/LICENSE.md` (full terms from `rp1.com/terms`, ASCII-encoded — no smart quotes or Unicode dashes, NSIS can't render them) on the license page.
+- **Installer filename pattern**: `Rubidium-<version>-<platform>.<ext>` where `<platform>` is the same `RUBIDIUM_PLATFORM` slug used everywhere else (`windows-x64`, `linux-x64`, `macos-arm64`, etc.). Controlled by `CPACK_PACKAGE_FILE_NAME` in `src/CMakeLists.txt` — without that override, CPack defaults to `CPACK_SYSTEM_NAME` (e.g. `win64`) and the `package_register` target (which builds its filename from `RUBIDIUM_PLATFORM`) would point at a non-existent file. Historical entries in `pkg/manifest.json` with `-win64.exe` URLs (versions 0.0.0 and 0.0.1) predate the override and are preserved as-is.
+- macOS: DMG drag-and-drop image.
+- Linux: TGZ archive.
+- Output lands in `builds/<platform>/install/<config>/pkg/` — chosen per-config by a generated `CPackProjectConfig.cmake` that reads `CPACK_BUILD_CONFIG` at CPack time. CPack does not evaluate CMake generator expressions directly, so the per-config directory has to come from a script that runs at CPack time.
+- Generate with: `cpack --config builds/windows-x64/build/CPackConfig.cmake -C Release` (requires NSIS installed on Windows). Run twice — once `-C Debug`, once `-C Release` — to populate both per-config `pkg/` siblings without touching the other.
+- `CPACK_NSIS_DISPLAY_NAME` is `"Rubidium"` (no version suffix — Windows shows just "Rubidium" in Apps & features, matching how other applications appear). `CPACK_NSIS_INSTALLED_ICON_NAME` points to `bin\Rubidium.exe` so Windows displays the embedded icon in the app list.
+- `CPACK_PACKAGE_INSTALL_DIRECTORY` is `"Rubidium"` (not the default which would produce a double `Metaversal\Metaversal` path since `CPACK_NSIS_INSTALL_ROOT` already includes `Metaversal`).
+
+**Application Icon:**
+- `pkg/logo-rounded.ico` — multi-resolution (16-256px), 32-bit PNG-compressed. Embedded in the executable via `src/rubidium.rc`. Generated via [redketchup.io/icon-converter](https://redketchup.io/icon-converter).
+- Three variants exist: `logo-square.ico`, `logo-rounded.ico` (primary), `logo-round.ico`.
+
+**Release Manifest (`pkg/manifest.json`):**
+- Cumulative JSON file checked into the repo and uploaded to the CDN.
+- Structure: `current` (channel index for fast client lookup) + `releases` (nested object keyed by platform → version for O(1) lookup).
+- Example: `releases["windows-x64"]["0.0.5"]` → `{ "date", "url", "sha256", "notes" }`. No `platform` or `version` fields inside the entry — both are already the keys.
+- Client lookup: `current["stable"]["windows-x64"]` → version string → `releases["windows-x64"][version]` → direct hit. No array scanning.
+- Managed by the `GenerateManifest` build tool (`pkg/generate_manifest.cpp`) which has two commands:
+  - `register` — computes SHA-256 of the installer, inserts a release entry at `releases[platform][version]` (no channel promotion)
+  - `promote` — points `current[channel][platform]` at a registered version, verifying `releases[platform][version]` exists
+- Convenience targets: `package_register` (register only) and `package_promote` (promote to stable).
+- Channel assignment lives solely in the `current` index — release entries have no channel field.
+- Uses standard 3-space JSON indentation (not Allman).
+- Future consideration: as the manifest grows (9 platforms × many versions), may split into a slim `latest.json` (just current + matching entries) for the client and a full `manifest.json` archive for tooling/auditing.
+
+**RubidiumSetup.exe (`pkg/RubidiumSetup.cpp`):**
+- Standalone C++ executable that replaces the former NSIS stub installer and Rubidium's embedded update logic.
+- Built alongside Rubidium as a CMake target (`RubidiumSetup`). Ships in `bin/` alongside `Rubidium.exe`.
+- Also distributed as a standalone download on the website for fresh installs.
+- Uses static `libcurl` from Sneeze's build output (no Sneeze.lib linkage), `nlohmann/json` (header-only), `bcrypt` (Windows system lib for SHA-256). Zero runtime DLLs.
+- Win32 `WinMain` entry point — no console window.
+- Three modes:
+  - **Fresh install** (`RubidiumSetup.exe`, no args): Shows Win32 step-list dialog with four steps (Fetching release information, Downloading Rubidium x.x.x, Verifying download, Launching installer). Each step shows "..." when active and appends a green ✔ checkmark when complete. Progress bar tracks the download. Fetches manifest from CDN, downloads current stable installer, verifies SHA-256, launches package installer. Primary distribution artifact — users download this from the website.
+  - **Check** (`RubidiumSetup.exe --check VERSION`): Silent background process. Respects 24-hour check interval (stored as `last_check` epoch seconds in `Updates.json`). Fetches manifest, compares versions, downloads newer installer to `%APPDATA%\Metaversal\Rubidium\Updates\`, verifies SHA-256, writes staged info to `Updates.json`. Writes operational log to `Updates/RubidiumSetup.log`.
+  - **Apply** (`RubidiumSetup.exe --apply`): Reads `Updates.json`, launches staged package installer, cleans up. Uses non-throwing `fs::remove` (error_code overload) so `Updates.json` cleanup always executes even if the installer file is locked.
+- `--force` flag (with `--check`): bypasses 24-hour interval, used by Ctrl+Shift+U "Check for Updates" in Rubidium.
+- **Critical bug fix**: `LoadUpdatesJson()` must initialize `nlohmann::json jData = nlohmann::json::object()`, not `nlohmann::json jData;` (which produces `null`). Calling `.value()` on a null JSON throws `type_error`, silently crashing the process. This was the root cause of RubidiumSetup `--check` appearing to do nothing on first run.
+- Replaces the former `pkg/stub_installer.nsi` — no NSIS plugins (NScurl, nsJSON) are needed anymore.
+
+**Persisted State — Two Files, One Writer Each:**
+- `%APPDATA%\Metaversal\Rubidium\Settings.json` — owned by the `APP` base class. Created on first launch with defaults; written back to disk at program exit (`~APP()` destructor). On Linux: `$HOME/.config/Metaversal/Rubidium/settings.json`. Contains: `home` (fabric URL, default `https://rp1.com/enter.msf`), `window` (`x`, `y`, `width`, `height`, `maximized` — saved from the last closed window, only written when the *last* window closes to avoid unnecessary writes), `updater.skipped_version` (string — skip applies only to that specific version, newer version triggers fresh prompt; auto-cleared when current version >= skipped version), `inspector` (`x`, `y`, `width`, `height`, `columns` — old Win32 inspector), `inspector_rml` (`x`, `y`, `width`, `height` — new RmlUi inspector, updated on every completed move/resize via `FN_WINDOW_GEOMETRY` callback). RubidiumSetup never writes to this file.
+- `%APPDATA%\Metaversal\Rubidium\Updates\Updates.json` — owned by RubidiumSetup. Contains `last_check` (epoch seconds) and `staged` object (version, installer path, SHA-256, notes, date) when an update is ready. Rubidium reads but never writes (except `CleanupStaged` which removes the `staged` entry after skip/install).
+- `%APPDATA%\Metaversal\Rubidium\Updates\RubidiumSetup.log` — operational log written by RubidiumSetup. Timestamped entries for check mode (current version, whether check was skipped/performed, manifest fetch result, version comparison, download/verify status, staged result) and apply/install modes. Useful for diagnosing update issues.
+
+**Slimmed UPDATER class (`src/updater/Updater.h`, `src/updater/Updater.cpp`):**
+- No HTTP client, no manifest parsing, no downloading, no SHA-256, no background threads. No direct file I/O for `Settings.json` — all settings access goes through `RUBIDIUM::SETTINGS::GetInstance()`.
+- `CheckForStagedUpdate(sCurrentVersion)` — reads `Updates/Updates.json`, returns true if `staged` exists, installer file is present, AND staged version > current version. If staged version <= current (stale from a completed update), auto-cleans the staged entry and installer file.
+- `IsVersionSkipped()` — compares staged version against `skipped_version` via `SETTINGS::JSON()`.
+- `SpawnBackgroundCheck()` — launches `RubidiumSetup.exe --check VERSION` (detached, no window).
+- `SpawnForceCheck(sCurrentVersion)` — clears `skipped_version` via `SETTINGS::JSON()`, launches `RubidiumSetup.exe --check VERSION --force`, sets `m_bWaitingForCheck` flag for poll-based result detection.
+- `PollCheckResult()` — returns `CHECK_IDLE`, `CHECK_PENDING`, `CHECK_NO_UPDATE`, or `CHECK_UPDATE_AVAILABLE`. Monitors `Updates.json` for `last_check` timestamp >= spawn time to detect completion. Populates staged version/notes/installer when update is found.
+- `SpawnApply()` — launches `RubidiumSetup.exe --apply`.
+- `SkipVersion()` — writes `skipped_version` via `SETTINGS::JSON()`, deletes staged installer and clears `Updates.json`.
+- `ClearStaleSkippedVersion()` — if `skipped_version` in settings is <= current version, clears it via `SETTINGS::JSON()`. Called on startup when no staged update is present.
+- `CleanupStaged()` — removes staged installer file and `staged` entry from `Updates.json`.
+- `UpdatesDir()` / `UpdatesJsonPath()` — derive paths from `SETTINGS::GetInstance()->sHomePath()`.
+- Contains a private `CompareVersions()` helper (semantic version comparison, identical to the one in RubidiumSetup.cpp).
+- `UPDATER` is an abstract base with a factory (`Create()`). Platform subclasses: `UPDATER_WND` (Win32, MessageBox prompt) and `UPDATER_GENERIC` (stub for non-Windows). The former `GetAppDataDir()` virtual has been removed — path resolution is now centralized in `SETTINGS`. Getter methods: `StagedVersion()`, `StagedNotes()`, `SetupExePath()` (virtual, per-platform).
+
+**Startup Flow (`APP::Run()`):**
+1. `SETTINGS` singleton is initialized on first access (resolves app data path, loads `settings.json` or creates with defaults).
+2. Log level restored from `settings.json` via `m_pLogger->LogLevel()`.
+3. Sneeze engine created and initialized (`SNEEZE Sneeze(this)` — `APP` is the `ISNEEZE` host).
+4. Initial window created from persisted geometry (`settings.json` `window` key) via `Window_Create()`. If `maximized` was true, `ShowWindow(SW_MAXIMIZE)`.
+5. Message loop entered via `PollEvents()`. Loop exits when last window closes.
+6. `Sneeze.Shutdown()` after loop exit.
+
+**Updater flow (currently commented out, pending re-integration with multi-window architecture):**
+1. Check `Updates.json` for a staged update via `CheckForStagedUpdate(RUBIDIUM_VERSION)`. Also auto-cleans stale staged entries (staged version <= current).
+2. If staged and version != `skipped_version`: prompt user with MessageBox (Yes/No/Cancel).
+   - Yes: spawn `RubidiumSetup.exe --apply`, quit Rubidium.
+   - No (Skip): write `skipped_version` to `Settings.json`, delete staged installer, continue.
+   - Cancel: continue without action (re-prompts next launch).
+3. If no staged update: clear stale `skipped_version` (if <= current version), spawn `RubidiumSetup.exe --check VERSION` in background, continue.
+
+**In-App Update Check (Ctrl+Shift+U — currently commented out, pending re-integration):**
+- `APPFRAME` handles Ctrl+Shift+U as an accelerator on the ellipsis menu's "Check for Updates" item.
+- Update check triggers `SpawnForceCheck()` which clears `skipped_version`, launches `RubidiumSetup.exe --check VERSION --force`, sets `m_bWaitingForCheck`.
+- Polls `PollCheckResult()` each frame. When RubidiumSetup finishes:
+  - `CHECK_NO_UPDATE` → MessageBox "You are running the latest version."
+  - `CHECK_UPDATE_AVAILABLE` → Same Yes/No/Cancel prompt as startup. Yes quits and applies; No skips.
+
+**NSIS Finish Page:**
+- `CPACK_NSIS_MUI_FINISHPAGE_RUN` is set to `Rubidium.exe`, adding a "Run Rubidium" checkbox (checked by default) on the installer's final page.
+
+**`pkg/LICENSE.md` — Encoding Requirement:**
+- Contains the full Metaversal Terms of Use from `rp1.com/terms`.
+- **Must be ASCII-encoded.** NSIS's license page cannot render UTF-8 smart quotes (`\u201C`, `\u201D`, `\u2018`, `\u2019`) or em-dashes (`\u2014`). These render as garbage characters. All curly quotes must be replaced with straight ASCII quotes, em-dashes with `--`, en-dashes with `-`.
+- If the terms are re-exported from the website, the ASCII conversion must be re-applied.
+
+**CDN Configuration:**
+- `RUBIDIUM_CDN_URL` — CMake cache variable, default `https://dean.rp1.dev:884/_rubidium/`. Compiled into the binary.
+- `RUBIDIUM_PLATFORM` — auto-detected from OS and architecture (e.g., `windows-x64`, `macos-arm64`). Also a CMake cache variable.
+- Manifest URL is `RUBIDIUM_CDN_URL + "manifest.json"`.
+
+
+**Static linking decisions:**
+- SDL3: statically linked (`SDL3::SDL3-static`). No `SDL3.dll` to distribute.
+- ANARI core: statically linked (`anari::anari_static`). No `anari.dll` to distribute.
+- Halogen/Filament device: remains dynamic (`anari_library_halogen.dll`) — the ANARI SDK builds device libraries as shared plugins by design. Located in `Sneeze/deps/builds/<platform>/<config>/libs/Halogen/install/bin/`. Sole ANARI device consumed by Rubidium (Helide retired — `BUILD_HELIDE_DEVICE=OFF` on both Sneeze's `anari-sdk` and `anari-sdk-release` ExternalProjects; helide's Embree sub-dep was also blowing out Windows `MAX_PATH` on longer checkout paths).
+- Wasmtime: remains dynamic (`wasmtime.dll`) due to size (~23 MB) and potential CRT conflicts with static Rust runtime.
+
+## Roadmap
+
+Rubidium's roadmap tracks application-layer work. Engine-layer roadmap (SOM, SMAP, WASM services, OpenXR integration, etc.) lives in Sneeze's `project.mdc`.
+
+### Current State — Solar System Demo (Phase 1 / 1.5 Complete)
+
+Rubidium currently runs a disposable solar system demo that exercises the Sneeze rendering pipeline end-to-end. The astro module and solar system code will be removed as the browser progresses — it exists only to validate the stack.
+
+### Known Limitations (Solar System Demo)
+
+- No HUD or on-screen labels
+- No animation speed controls in the UI (code supports +/- keys but no visual feedback)
+- Sphere bodies have no texture mapping
+
+### Upcoming Application Work
+
+| # | Task | Notes |
+|---|------|-------|
+| 1 | Application installer | **DONE.** CPack generates NSIS installer (Windows), DMG (macOS), TGZ (Linux) into `builds/<platform>/install/<config>/pkg/`. `RubidiumSetup.exe` (`pkg/RubidiumSetup.cpp`) is the web installer and auto-updater — a single standalone C++ executable with three modes (fresh install, background check, apply). Replaces the former NSIS stub installer. Full Windows installer pipeline tested end-to-end. |
+| 2 | Auto-updater | **DONE.** All three modes tested end-to-end (fresh install, background check, apply). All three prompt responses verified (Install, Skip, Cancel). Stale staged/skipped cleanup working. Force check via Ctrl+Shift+U with inline result detection (no-update dialog or update prompt). Settings.json created on first launch with defaults. |
+| 3 | Browser chrome framework | **IN PROGRESS.** `APP` (`src/shell/App.h/.cpp`) is the application controller — owns the window lifecycle, Sneeze host interface (`ISNEEZE`), and Win32 message pump. `IAPPFRAME` callback interface decouples window lifecycle events from `APPFRAME`. **Multi-window support:** `APP` maintains `std::vector<APPFRAME_NATIVE*>`, creates windows via `Window_Create()`, tracks the active (focused) window, and terminates when the last window closes. Window geometry (position, size, maximized) saved on last-window-close and restored on next launch. Ellipsis menu includes "New Window" and "New Incognito Window" items (mapped to `SNEEZE::VIEWPORT::kPERSISTENT` / `kTRANSITORY`). "Exit" closes all open windows. `APPFRAME_NATIVE` implements DWM custom title bar, pill-shaped URL bar, app icon, account icon, vertical ellipsis menu. SDL rendering embedded as edge-to-edge child viewport. Full DPI awareness (per-monitor v2). Window resizable from all edges/corners via child subclassing for `HTTRANSPARENT`. DWM system caption buttons used by default; custom-drawn buttons available via `#ifdef RUBIDIUM_CUSTOM_CAPTION_BUTTONS`. Toolbar button hover on mouseover. Win32 implementation stable and working. Single-instance mutex prevents duplicate processes. |
+| 4 | Settings / preferences UI | User-facing configuration |
+| 5 | Authenticode code signing | EV certificate required to eliminate Windows SmartScreen "unknown publisher" warning. Sign both `Rubidium.exe` and the NSIS installer with `signtool.exe`. Needed before any public release. |
+| 6 | macOS code signing | Apple requires code signing and notarization for distribution. Needs Apple Developer account, `codesign`, and `notarytool`. |
+| 7 | Cross-platform build and test | Build, test, and run on macOS and Linux. Verify CMake, CPack, and runtime on each platform. |
+| 8 | GPU-accelerated ANARI device | **DONE.** Halogen (Filament-based) GPU-accelerated ANARI device integrated. Replaced Helide CPU ray tracer. DLL: `anari_library_halogen.dll` from `SNEEZE_LIBS_DIR/Halogen/install/bin/`. Renderer name: `"halogen"`. Sneeze-side: directional light (irradiance 3.0) + ambient light (radiance 0.2) — Filament is PBR and requires explicit lighting unlike Helide. CPU usage dropped from ~84% to ~4.5%. Helide has since been removed from the Sneeze dep build entirely (`BUILD_HELIDE_DEVICE=OFF`). |
+| 9 | WASM debug console windows | Each WASM container gets a separate debug console window for logs. Developers see a tree view of fabrics/services and can open debug consoles per container (multiple simultaneously). Not for this phase — deferred until the main application frame is stable and the console window is replaced. Needs investigation: Win32 `AllocConsole` only supports one console per process, so will likely need custom Win32 windows with rich text controls, or a developer tools panel within the native frame. |
+| 10 | MSF/MSS file formats and JWS trust model | **DESIGNED.** Full architectural spec written for MSF (fabric descriptor) and MSS (service descriptor) file formats — JWS-signed (RFC 7515) with X.509 code signing certificate chains (`x5c`). Trust model: certificate-based identity (domain-independent), container isolation (persona + signing key fingerprint + namespace), tiered storage (persona > certificate > namespace), certificate rotation via succession declarations. Paper: `MSF-MSS.md`. AI context: `MSF-MSS.mdc`. JWS implementation handoff: `JWS.mdc`. All three files created in Rubidium repo for convenience, to be relocated to Sneeze or another project for implementation. Recommended library: jwt-cpp (header-only, MIT, OpenSSL, nlohmann/json). Implementation is a Sneeze-side task. |
+| 11 | Build system restructuring | **DONE.** Migrated from single SuperBuild `CMakeLists.txt` to two independent CMake trees (`deps/` and `src/`) mirroring Sneeze's architecture. Platform build scripts (`scripts/build-windows.ps1`, `scripts/build-{linux,macos,deps}.sh`) are the only glue. Stamp-cached deps. Shared source clones. Per-platform per-config isolation. Old top-level `CMakeLists.txt` and `scripts/build.{ps1,sh}` deleted. Release build verified working on Windows. |
+| 13 | Cache inspector (Network tab) | **DONE (Phases 1–4) — now migrating to cross-platform RmlUi.** Original Win32 native implementation: Chrome DevTools-style Network panel in `src/inspector/`. Live file table, toolbar with Record/Stop/Clear/Reset/Filter/Disable Cache, text and type filters, container sidebar, right-click context menu, timing waterfall with color-coded bars, and detail pane (Headers/Preview/Response/Timing tabs). Wired to Sneeze cache API via `FILE::Request()` / `FILE::Release()` attach/detach lifecycle for detail pane data access. Tab system with 8 tabs (Network active, others placeholder). Window position and column widths persisted. **Future enhancements considered:** interactive time-range selector on waterfall (Chrome-style grabbers that filter the list to a time window), queue-phase visualization in waterfall bars, retention window setting (inspector sends policy to cache manager, which prunes and fires `OnCacheFileDeleted` — important for long-lived metaverse sessions vs. web page loads). |
+| 14 | Cross-platform inspector (RmlUi migration) | **IN PROGRESS.** Replacing the Win32 native inspector with a cross-platform RmlUi/SDL3 implementation. **Architecture (current as of 2026-05-31):** `INSPECTOR_RML::Impl` uses `RMLUI_SDL` via composition (`m_Window` member) — all SDL/RmlUi window boilerplate extracted into the reusable `src/rmlui_sdl/` module. `Impl` inherits `Rml::EventListener` for tab click dispatch and `Rml::EventId::Keydown` for global keyboard shortcuts (Ctrl+F for Elements search). Owns `m_apTab[kTAB_COUNT]` + `m_nActiveTab` for tracking the currently active tab. Static members: `s_afnCreateWidget[]` factory table, `s_sRmlStyle` (CSS from `.inl` file, all `dp` units + `1px` borders), `s_sRmlDocument` (RML template with single `[{STYLE}]` placeholder). Initialize flow: read stored geometry from `settings.json["inspector_rml"]` → `m_Window.Initialize()` with stored/default size → `SetPosition()` if stored → `SetGeometryCallback()` → substitute `[{FONT-FAMILY}]` + `[{STYLE}]` → `m_Window.LoadDocument()` → create tabs in loop. DPI scaling fully automatic via `RMLUI_SDL` (`SetDensityIndependentPixelRatio` + `SDL_WINDOW_HIGH_PIXEL_DENSITY`). Window geometry persisted on every completed move/resize via `FN_WINDOW_GEOMETRY` callback. Each `INSPECTOR_TAB` owns an `INSPECTOR_WIDGET*` (polymorphic base class defined in `InspectorRml.h`). Widget classes use `IW_` prefix naming. **Tabs implemented:** Network (fully implemented with all sub-components), Console (toolbar with Clear/Filter/Levels/Settings + 3-line settings tray, containers sidebar, entries placeholder), Elements (tree area with path bar + collapsible Ctrl+F search bar, details panel with Computed/Details/Events sub-tabs), Storage (renamed from Application — containers sidebar, preview pane with 5 custom tabs + toolbar with search/clear/delete), Security (containers sidebar, preview placeholder with shield icon), Performance (toolbar with Record/Clear, metrics dashboard cards for FPS/Frame/Submit/Render, chart placeholder, scrollable log area with JetBrains Mono). **Stubs remaining:** Sources, Memory. Each widget has `static Create()` factory, virtual `Id()` (returns e.g. `"network"`), virtual `Initialize(Rml::Element* pContainer)`. Composite widgets use table-driven child instantiation: `enum eWIDGET` + `static const FN_CREATEWIDGET s_afnCreateWidget[]` + base class `CreateWidgets()` helper. Each widget defines its own static RML string (`s_sRml` as `R"rml(...)rml"` raw string literals) injected via `SetInnerRML()`. Base class `INSPECTOR_WIDGET` owns `m_pContainer`, `std::vector<INSPECTOR_WIDGET*> m_apChildren`, provides `Container()`, `Container(int)`, `Widget(int)` accessors, destructor handles child cleanup. Shared CSS in `InspectorRml_Style.inl` uses generic reusable classes: `panel-toolbar`, `panel-body`, `panel-sidebar`, `panel-main`, `panel-statusbar`, `panel-tabbar`, `panel-content`, `panel-bottombar`, `panel-searchbar`, `split-left`/`split-right`, `perf-metrics`/`metric-card`/`perf-chart`/`perf-log`. Common `IW_BUTTON` class (in `src/inspector/common/Button.h`) with static factory methods for standard icons (Record, Clear, Settings, Filter, Delete). Nomenclature: tab buttons are `id="tab-<name>"`, content areas are `id="panel-<name>"`. File structure: each panel in its own subfolder (`elements/`, `network/`, `console/`, `storage/`, `security/`, `performance/`, etc.) with header + `*_Frame.cpp`. Network files prefixed `Network_` to avoid MSVC `.obj` collisions. Pixel-perfect Chromium DevTools color scheme. Both inspectors coexist: F11 / "New Inspector" for RmlUi, F12 / "Old Inspector" for Win32 native. Not yet wired to Sneeze cache events. **Fonts:** Inter (UI text), Material Symbols Outlined (icons), JetBrains Mono (monospace/log) — managed as build-time dependencies via `deps/fonts.cmake`. **Next:** (1) Wire cache data, implement toolbar actions, populate file list with live data. (2) Build horizontal waterfall. (3) Implement detail pane content. (4) Wire Performance tab to Sneeze telemetry. (5) Wire Console tab to logger output. Future: reusable component library and multi-DPI validation. |
+| 15 | Hand-maintained MSVC projects | **DONE.** Created `msvc/Rubidium.sln`, `Rubidium.vcxproj`, `Rubidium.vcxproj.filters` for Rubidium; `Sneeze/msvc/Sneeze.sln`, `Sneeze.vcxproj`, `Sneeze.vcxproj.filters` for Sneeze; `Sneeze/msvc/SneezeTest.vcxproj` + `.filters` for Sneeze tests. Rubidium solution references all three projects. MSBuild macros for portable relative paths. PCH via `pch.cpp`/`Pch.cpp`. Version header via PowerShell PreBuildEvent. AI-driven `sync-build` skill in both repos for `.vcxproj` → `CMakeLists.txt` synchronization. Both Debug and Release configs build and run successfully. |
+| 12 | Multi-config Rubidium tree | **DONE.** Rubidium's per-config build tree collapsed into a single multi-config CMake tree at `builds/<platform>/build/` (VS/Xcode on IDE platforms, Ninja Multi-Config on Linux/macOS CLI). One `Rubidium.sln` per platform, toolbar dropdown flips Debug/Release and both build against their respective per-config deps tree without reconfigure. Per-config install trees at `builds/<platform>/install/{debug,release}/{bin,pkg}/`. Deps trees stay per-config as before. `CMAKE_CONFIGURATION_TYPES` pinned to `Debug;Release` to keep CMake from probing deps paths that don't exist. Sneeze-side path generalization rewrites imported targets across `anari::anari_static` + `vox::vox` with a `_resolve_variant` helper that handles Debug-suffix filenames (`libcurl-d.lib`, `openxr_loaderd.lib`, `spirv-cross-cored.lib`). Rubidium-side does the same for SDL3. CPack output chosen at CPack time by `CPackProjectConfig.cmake` reading `CPACK_BUILD_CONFIG`. |

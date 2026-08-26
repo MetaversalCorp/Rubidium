@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{C5D6E7F8-4567-8901-ABCD-EF0123456789}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>RubidiumSetup</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <!-- ===================================================================== -->
+  <!-- Path macros — all paths derive from these                              -->
+  <!-- ===================================================================== -->
+  <PropertyGroup Label="UserMacros">
+    <RubidiumRoot>$(MSBuildProjectDirectory)\..</RubidiumRoot>
+    <SneezeRoot>$(RubidiumRoot)\..\Sneeze</SneezeRoot>
+    <RubidiumBuildRoot>$(RubidiumRoot)\builds\windows-x64</RubidiumBuildRoot>
+    <SneezeDepsRoot>$(SneezeRoot)\deps\builds\windows-x64</SneezeDepsRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CfgLower Condition="'$(Configuration)'=='Debug'">debug</CfgLower>
+    <CfgLower Condition="'$(Configuration)'=='Release'">release</CfgLower>
+  </PropertyGroup>
+  <!-- ===================================================================== -->
+  <!-- Output directories                                                     -->
+  <!-- ===================================================================== -->
+  <PropertyGroup>
+    <OutDir>$(RubidiumBuildRoot)\install\$(CfgLower)\bin\</OutDir>
+    <IntDir>$(RubidiumBuildRoot)\build\RubidiumSetup.dir\$(Configuration)\</IntDir>
+    <TargetName>RubidiumSetup</TargetName>
+    <TargetExt>.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+    <GenerateManifest>true</GenerateManifest>
+  </PropertyGroup>
+  <!-- ===================================================================== -->
+  <!-- Debug configuration                                                    -->
+  <!-- ===================================================================== -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SneezeDepsRoot)\debug\libs\curl\install\include;$(SneezeDepsRoot)\debug\libs\nlohmann-json\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;CURL_STATICLIB;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>$(SneezeDepsRoot)\debug\libs\curl\install\lib\libcurl-d.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;ws2_32.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDataBaseFile>$(OutDir)RubidiumSetup.pdb</ProgramDataBaseFile>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $pkg = '$(RubidiumRoot)/pkg' -replace '\\','/'; $r = (Get-Content '$(RubidiumRoot)\pkg\setup.rc.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@RUBIDIUM_VER@',($v -join '.') -replace '@RUBIDIUM_PKG_DIR@',$pkg; [IO.File]::WriteAllText('$(IntDir)setup.rc', $r)"</Command>
+      <Message>Generating setup.rc from setup.rc.in</Message>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- ===================================================================== -->
+  <!-- Release configuration                                                  -->
+  <!-- ===================================================================== -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SneezeDepsRoot)\release\libs\curl\install\include;$(SneezeDepsRoot)\release\libs\nlohmann-json\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;CURL_STATICLIB;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>$(SneezeDepsRoot)\release\libs\curl\install\lib\libcurl.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;ws2_32.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <ProgramDataBaseFile>$(OutDir)RubidiumSetup.pdb</ProgramDataBaseFile>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $pkg = '$(RubidiumRoot)/pkg' -replace '\\','/'; $r = (Get-Content '$(RubidiumRoot)\pkg\setup.rc.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@RUBIDIUM_VER@',($v -join '.') -replace '@RUBIDIUM_PKG_DIR@',$pkg; [IO.File]::WriteAllText('$(IntDir)setup.rc', $r)"</Command>
+      <Message>Generating setup.rc from setup.rc.in</Message>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- ===================================================================== -->
+  <!-- Source files                                                           -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <ClCompile Include="..\pkg\RubidiumSetup.cpp" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Resource files (generated from setup.rc.in by PreBuildEvent)           -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <ResourceCompile Include="$(IntDir)setup.rc" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Template / reference files (visible in VS, not compiled)               -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <None Include="..\pkg\setup.rc.in" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

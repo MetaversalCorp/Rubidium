@@ -1,0 +1,12 @@
+// Copyright 2026 Metaversal Corporation. All rights reserved.
+// Generated from VERSION file by CMake — do not edit manually.
+
+#ifndef RUBIDIUM_VERSION_H
+#define RUBIDIUM_VERSION_H
+
+#define RUBIDIUM_VER_MAJOR  @RUBIDIUM_VER_MAJOR@
+#define RUBIDIUM_VER_MINOR  @RUBIDIUM_VER_MINOR@
+#define RUBIDIUM_VER_PATCH  @RUBIDIUM_VER_PATCH@
+#define RUBIDIUM_VERSION    "@PROJECT_VERSION@"
+
+#endif // RUBIDIUM_VERSION_H

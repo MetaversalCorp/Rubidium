@@ -1,0 +1,67 @@
+## Welcome to Rubidium™
+
+Rubidium is a *metaverse browser* built on *Sneeze*, the open-source metaverse browser engine. Just as a web browser opens web pages, Rubidium opens *spatial fabrics* — live 3D environments assembled from networked services.
+
+---
+**Version 0.3.0** — July 16, 2026
+
+## What's New
+
+- Everything! This is the third release of Rubidium.
+- Thank you for being among the first people anywhere to experience the open metaverse.
+
+## New since version 0.2.0
+
+- Several bug fixes for Mac and Linux.
+- A first attempt at a GLB file viewer in the inspector. Don't get your hopes up too high.
+- Significant updates to the way spatial fabric files are read and the way wasm files interface with the engine.
+- Added a Rust crate to provide a robust engine API for wasm programs. More languages coming very soon!
+- See tutorials for the new fabric file format. If you made your own fabric prior to this version, you'll need to update. This stuff is still evolving.
+- [Spatial Fabric Tutorials](https://omb.wiki/sneeze/examples/index)
+- Note that the spatial fabric format will not be considered stable until we reach version 1.0.0
+
+## New since version 0.1.0
+
+- The way lighting is encoded has changed in both the scene and nodes.
+- Ambient lighting and spot lighting is now working properly.
+- See tutorials for the new format. If you made your own fabric in the last two days, you'll need to update. Sorry about that.
+- [Spatial Fabric Tutorials](https://omb.wiki/sneeze/examples/index)
+
+## What you can do today
+
+- Open multiple browser tabs and windows, each with its own independent view
+- Peek under the hood with the built-in developer inspector window — press `F12`
+- Sign and verify metaverse spatial fabric (.msf) files from the command line (see below)
+- Stay current with automatic updates as new versions ship
+
+## Present limitations
+
+Rubidium is at the very beginning of its journey, and this release is an early preview:
+
+- The solar system is a demonstration fabric — it was created for development purposes, but will grow into a fully featured destination as the browser matures
+- Discovery is *address-based* for now; *proximity-based* discovery — connecting to what is near you rather than typing an address — is on the roadmap
+- There are no in-world labels or heads-up display yet
+- Network connectivity is coming very soon — until then, wasm programs run connectionless
+- VR and AR (via OpenXR) are coming, but are not ready for use in this build
+- Fabric-authoring tools are still taking shape
+
+## Make a spatial fabric of your own
+
+A *metaverse spatial fabric* is a collection of *objects and services* described by a signed .msf file. A fabric you publish and host on your own server can be opened and rendered by any compliant metaverse browser.
+
+Rubidium has built-in command-line tools to sign and verify your .msf files:
+
+- `Rubidium --sign --payload <fabric.json> --key <key.pem> --cert <cert.pem> --out <fabric.msf>`
+- `Rubidium --verify <fabric.msf>`
+
+To learn more about .msf file formats and standards, and to publish your first fabric, start here:
+
+- [Sneeze Engine Documentation](https://omb.wiki/sneeze)
+- [Spatial Fabric Tutorials](https://omb.wiki/sneeze/examples/index)
+
+## Discover more about the latest innovations in the metaverse
+
+- [RP1](https://rp1.com)
+- [Rubidium](https://rp1.com/rubidium)
+- [Metaverse Standards Forum](https://metaverse-standards.org/)
+- [Open Metaverse Browser Initiative (OMBI)](https://metaverse-standards.org/open-metaverse-browser-initative/)

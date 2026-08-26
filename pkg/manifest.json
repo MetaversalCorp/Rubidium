@@ -1,0 +1,12 @@
+{
+   "current": {
+      "stable": {}
+   },
+   "releases": {
+      "android-arm64": {},
+      "ios-arm64": {},
+      "linux-x64": {},
+      "macos-universal": {},
+      "windows-x64": {}
+   }
+}

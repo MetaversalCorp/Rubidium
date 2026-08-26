@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{A1B2C3D4-1234-5678-9ABC-DEF012345678}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>Rubidium</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <!-- ===================================================================== -->
+  <!-- Path macros — all paths derive from these                              -->
+  <!-- ===================================================================== -->
+  <PropertyGroup Label="UserMacros">
+    <RubidiumRoot>$(MSBuildProjectDirectory)\..</RubidiumRoot>
+    <SneezeRoot>$(RubidiumRoot)\..\Sneeze</SneezeRoot>
+    <RubidiumBuildRoot>$(RubidiumRoot)\builds\windows-x64</RubidiumBuildRoot>
+    <RubidiumDepsRoot>$(RubidiumRoot)\deps\builds\windows-x64</RubidiumDepsRoot>
+    <SneezeDepsRoot>$(SneezeRoot)\deps\builds\windows-x64</SneezeDepsRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CfgLower Condition="'$(Configuration)'=='Debug'">debug</CfgLower>
+    <CfgLower Condition="'$(Configuration)'=='Release'">release</CfgLower>
+  </PropertyGroup>
+  <!-- ===================================================================== -->
+  <!-- Output directories                                                     -->
+  <!-- ===================================================================== -->
+  <PropertyGroup>
+    <OutDir>$(RubidiumBuildRoot)\install\$(CfgLower)\bin\</OutDir>
+    <IntDir>$(RubidiumBuildRoot)\build\Rubidium.dir\$(Configuration)\</IntDir>
+    <TargetName>Rubidium</TargetName>
+    <TargetExt>.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
+    <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
+    <GenerateManifest>true</GenerateManifest>
+  </PropertyGroup>
+  <!-- ===================================================================== -->
+  <!-- Debug configuration                                                    -->
+  <!-- ===================================================================== -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(RubidiumRoot)\src;$(IntDir);$(SneezeRoot)\src;$(SneezeRoot)\include;$(SneezeRoot)\src\sneeze;$(SneezeRoot)\src\viewport;$(SneezeRoot)\src\deps;$(SneezeDepsRoot)\debug\libs\SPIRV-Tools\install\include;$(SneezeDepsRoot)\debug\libs\curl\install\include;$(SneezeDepsRoot)\debug\libs\FreeType\install\include\freetype2;$(SneezeDepsRoot)\debug\libs\RmlUi\install\include;$(SneezeDepsRoot)\debug\libs\nlohmann-json\install\include;$(SneezeDepsRoot)\debug\libs\fastgltf\install\include;$(SneezeDepsRoot)\debug\libs\boringssl\install\include;$(SneezeDepsRoot)\debug\libs\jwt-cpp\install\include;$(SneezeDepsRoot)\debug\libs\RMAP\install\include;$(SneezeDepsRoot)\debug\libs\Map\install\include;$(SneezeDepsRoot)\debug\libs\Wasmtime\install\include;$(SneezeDepsRoot)\debug\libs\OpenXR-SDK\install\include;$(RubidiumDepsRoot)\debug\libs\SDL3\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "$(SneezeDepsRoot)\debug\libs\ANARI-SDK\install\include" /external:I "$(SneezeDepsRoot)\debug\libs\Vox\install\include"</AdditionalOptions>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>Disabled</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";RMLUI_SDL_VERSION_MAJOR=3;RUBIDIUM_PLATFORM_WINDOWS;CURL_STATICLIB;RMLUI_STATIC_LIB;SNEEZE_VERSION="0.0.0";SNEEZE_HAS_WASM;WASM_API_EXTERN=;WASI_API_EXTERN=;ANARI_STATIC_DEFINE;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RubidiumRoot)\src;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>$(SneezeRoot)\builds\windows-x64\install\debug\lib\Sneeze.lib;$(SneezeDepsRoot)\debug\libs\RMAP\install\lib\RMAP.lib;$(SneezeDepsRoot)\debug\libs\Map\install\lib\Map.lib;$(SneezeDepsRoot)\debug\libs\socketio\install\lib\sioclient_tls.lib;$(RubidiumDepsRoot)\debug\libs\SDL3\install\lib\SDL3-static.lib;dwmapi.lib;comctl32.lib;uxtheme.lib;$(SneezeDepsRoot)\debug\libs\ANARI-SDK\install\lib\anari_static.lib;$(SneezeDepsRoot)\debug\libs\ANARI-SDK\install\lib\anari_backend.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Tools\install\lib\SPIRV-Tools.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Tools\install\lib\SPIRV-Tools-opt.lib;$(SneezeDepsRoot)\debug\libs\curl\install\lib\libcurl-d.lib;$(SneezeDepsRoot)\debug\libs\RmlUi\install\lib\rmlui.lib;$(SneezeDepsRoot)\debug\libs\RmlUi\install\lib\rmlui_debugger.lib;$(SneezeDepsRoot)\debug\libs\FreeType\install\lib\freetyped.lib;$(SneezeDepsRoot)\debug\libs\fastgltf\install\lib\fastgltf.lib;$(SneezeDepsRoot)\debug\libs\boringssl\install\lib\ssl.lib;$(SneezeDepsRoot)\debug\libs\boringssl\install\lib\crypto.lib;$(SneezeDepsRoot)\debug\libs\Vox\install\lib\vox.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Cross\install\lib\spirv-cross-hlsld.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Cross\install\lib\spirv-cross-glsld.lib;$(SneezeDepsRoot)\debug\libs\SPIRV-Cross\install\lib\spirv-cross-cored.lib;d3d12.lib;dxgi.lib;d3dcompiler.lib;$(SneezeDepsRoot)\debug\libs\Wasmtime\install\lib\wasmtime.dll.lib;$(SneezeDepsRoot)\debug\libs\OpenXR-SDK\install\lib\openxr_loaderd.lib;ws2_32.lib;userenv.lib;ntdll.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;kernel32.lib;user32.lib;gdi32.lib;winmm.lib;imm32.lib;ole32.lib;oleaut32.lib;version.lib;uuid.lib;advapi32.lib;setupapi.lib;shell32.lib;dinput8.lib;winspool.lib;comdlg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDataBaseFile>$(OutDir)Rubidium.pdb</ProgramDataBaseFile>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
+      <Message>Generating version.h from VERSION</Message>
+    </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>copy /Y "$(SneezeDepsRoot)\debug\libs\Wasmtime\install\lib\wasmtime.dll" "$(OutDir)"
+copy /Y "$(SneezeDepsRoot)\debug\libs\Halogen\install\bin\anari_library_halogen.dll" "$(OutDir)"
+xcopy /Y /I /E "$(RubidiumRoot)\deps\fonts" "$(OutDir)fonts\"
+xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
+      <Message>Copying runtime DLLs, fonts, and images</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- ===================================================================== -->
+  <!-- Release configuration                                                  -->
+  <!-- ===================================================================== -->
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(RubidiumRoot)\src;$(IntDir);$(SneezeRoot)\src;$(SneezeRoot)\include;$(SneezeRoot)\src\sneeze;$(SneezeRoot)\src\viewport;$(SneezeRoot)\src\deps;$(SneezeDepsRoot)\release\libs\SPIRV-Tools\install\include;$(SneezeDepsRoot)\release\libs\curl\install\include;$(SneezeDepsRoot)\release\libs\FreeType\install\include\freetype2;$(SneezeDepsRoot)\release\libs\RmlUi\install\include;$(SneezeDepsRoot)\release\libs\nlohmann-json\install\include;$(SneezeDepsRoot)\release\libs\fastgltf\install\include;$(SneezeDepsRoot)\release\libs\boringssl\install\include;$(SneezeDepsRoot)\release\libs\jwt-cpp\install\include;$(SneezeDepsRoot)\release\libs\RMAP\install\include;$(SneezeDepsRoot)\release\libs\Map\install\include;$(SneezeDepsRoot)\release\libs\Wasmtime\install\include;$(SneezeDepsRoot)\release\libs\OpenXR-SDK\install\include;$(RubidiumDepsRoot)\release\libs\SDL3\install\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /external:I "$(SneezeDepsRoot)\release\libs\ANARI-SDK\install\include" /external:I "$(SneezeDepsRoot)\release\libs\Vox\install\include"</AdditionalOptions>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <Optimization>MaxSpeed</Optimization>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;RUBIDIUM_CDN_URL="https://cdn.rp1.com/rubidium/";RUBIDIUM_PLATFORM="windows-x64";RMLUI_SDL_VERSION_MAJOR=3;RUBIDIUM_PLATFORM_WINDOWS;CURL_STATICLIB;RMLUI_STATIC_LIB;SNEEZE_VERSION="0.0.0";SNEEZE_HAS_WASM;WASM_API_EXTERN=;WASI_API_EXTERN=;ANARI_STATIC_DEFINE;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RubidiumRoot)\src;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>$(SneezeRoot)\builds\windows-x64\install\release\lib\Sneeze.lib;$(SneezeDepsRoot)\release\libs\RMAP\install\lib\RMAP.lib;$(SneezeDepsRoot)\release\libs\Map\install\lib\Map.lib;$(SneezeDepsRoot)\release\libs\socketio\install\lib\sioclient_tls.lib;$(RubidiumDepsRoot)\release\libs\SDL3\install\lib\SDL3-static.lib;dwmapi.lib;comctl32.lib;uxtheme.lib;$(SneezeDepsRoot)\release\libs\ANARI-SDK\install\lib\anari_static.lib;$(SneezeDepsRoot)\release\libs\ANARI-SDK\install\lib\anari_backend.lib;$(SneezeDepsRoot)\release\libs\SPIRV-Tools\install\lib\SPIRV-Tools.lib;$(SneezeDepsRoot)\release\libs\SPIRV-Tools\install\lib\SPIRV-Tools-opt.lib;$(SneezeDepsRoot)\release\libs\curl\install\lib\libcurl.lib;$(SneezeDepsRoot)\release\libs\RmlUi\install\lib\rmlui.lib;$(SneezeDepsRoot)\release\libs\RmlUi\install\lib\rmlui_debugger.lib;$(SneezeDepsRoot)\release\libs\FreeType\install\lib\freetype.lib;$(SneezeDepsRoot)\release\libs\fastgltf\install\lib\fastgltf.lib;$(SneezeDepsRoot)\release\libs\boringssl\install\lib\ssl.lib;$(SneezeDepsRoot)\release\libs\boringssl\install\lib\crypto.lib;$(SneezeDepsRoot)\release\libs\Vox\install\lib\vox.lib;$(SneezeDepsRoot)\release\libs\SPIRV-Cross\install\lib\spirv-cross-hlsl.lib;$(SneezeDepsRoot)\release\libs\SPIRV-Cross\install\lib\spirv-cross-glsl.lib;$(SneezeDepsRoot)\release\libs\SPIRV-Cross\install\lib\spirv-cross-core.lib;d3d12.lib;dxgi.lib;d3dcompiler.lib;$(SneezeDepsRoot)\release\libs\Wasmtime\install\lib\wasmtime.dll.lib;$(SneezeDepsRoot)\release\libs\OpenXR-SDK\install\lib\openxr_loader.lib;ws2_32.lib;userenv.lib;ntdll.lib;bcrypt.lib;wldap32.lib;crypt32.lib;normaliz.lib;kernel32.lib;user32.lib;gdi32.lib;winmm.lib;imm32.lib;ole32.lib;oleaut32.lib;version.lib;uuid.lib;advapi32.lib;setupapi.lib;shell32.lib;dinput8.lib;winspool.lib;comdlg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <ProgramDataBaseFile>$(OutDir)Rubidium.pdb</ProgramDataBaseFile>
+      <SubSystem>Windows</SubSystem>
+      <!-- RMAP.lib is built with whole-program optimization (/GL) in Release, so
+           link with /LTCG to consume it without the auto-restart warning. -->
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
+      <Message>Generating version.h from VERSION</Message>
+    </PreBuildEvent>
+    <PostBuildEvent>
+      <Command>copy /Y "$(SneezeDepsRoot)\release\libs\Wasmtime\install\lib\wasmtime.dll" "$(OutDir)"
+copy /Y "$(SneezeDepsRoot)\release\libs\Halogen\install\bin\anari_library_halogen.dll" "$(OutDir)"
+xcopy /Y /I /E "$(RubidiumRoot)\deps\fonts" "$(OutDir)fonts\"
+xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
+      <Message>Copying runtime DLLs, fonts, and images</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <!-- ===================================================================== -->
+  <!-- PCH creation source                                                    -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <ClCompile Include="..\src\canvas\Canvas_Win32.cpp" />
+    <ClCompile Include="..\src\pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\AppFrameTab_SDL.cpp" />
+    <ClCompile Include="..\src\shell\ChromeRml.cpp" />
+    <ClCompile Include="..\src\Utils.cpp" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Source files                                                            -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <ClCompile Include="..\src\main_Win32.cpp" />
+    <ClCompile Include="..\src\shell\App.cpp" />
+    <ClCompile Include="..\src\shell\AppFrameTab.cpp" />
+    <!-- shell -->
+    <ClCompile Include="..\src\shell\App_Win32.cpp" />
+    <ClCompile Include="..\src\shell\AppFrame.cpp" />
+    <ClCompile Include="..\src\shell\AppFrame_Win32.cpp" />
+    <ClCompile Include="..\src\shell\WinUtils.cpp" />
+    <!-- canvas -->
+    <ClCompile Include="..\src\canvas\Canvas.cpp" />
+    <!-- updater -->
+    <ClCompile Include="..\src\updater\Updater.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterWnd.cpp" />
+    <!-- settings -->
+    <!-- logger -->
+    <ClCompile Include="..\src\logger\Logger.cpp" />
+    <ClCompile Include="..\src\logger\ILogger.cpp" />
+    <!-- inspector (old — Win32 native) -->
+    <!-- inspector (new — RmlUi) -->
+    <ClCompile Include="..\src\inspector\InspectorRml.cpp" />
+    <ClCompile Include="..\src\inspector\preview3d\Preview3D.cpp" />
+    <ClCompile Include="..\src\settings_ui\SettingsRml.cpp" />
+    <ClCompile Include="..\src\release_notes\Markdown.cpp" />
+    <ClCompile Include="..\src\release_notes\ReleaseNotesRml.cpp" />
+    <ClCompile Include="..\src\inspector\common\Button.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Toolbar.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Statusbar.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Waterfall.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Body.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Containers.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Files.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Details.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Headers.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Preview.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Response.cpp" />
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Timing.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Containers.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Tree.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Details.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Detail_Computed.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Detail_Details.cpp" />
+    <ClCompile Include="..\src\inspector\elements\Elements_Detail_Events.cpp" />
+    <ClCompile Include="..\src\inspector\console\Console_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\console\Console_Toolbar.cpp" />
+    <ClCompile Include="..\src\inspector\console\Console_Body.cpp" />
+    <ClCompile Include="..\src\inspector\console\Console_Containers.cpp" />
+    <ClCompile Include="..\src\inspector\console\Console_Entries.cpp" />
+    <ClCompile Include="..\src\inspector\sources\Sources_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\performance\Performance_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\performance\Performance_Toolbar.cpp" />
+    <ClCompile Include="..\src\inspector\performance\Performance_Metrics.cpp" />
+    <ClCompile Include="..\src\inspector\performance\Performance_Chart.cpp" />
+    <ClCompile Include="..\src\inspector\performance\Performance_Log.cpp" />
+    <ClCompile Include="..\src\inspector\memory\Memory_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\storage\Storage_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\storage\Storage_Containers.cpp" />
+    <ClCompile Include="..\src\inspector\storage\Storage_Preview.cpp" />
+    <ClCompile Include="..\src\inspector\security\Security_Frame.cpp" />
+    <ClCompile Include="..\src\inspector\security\Security_Containers.cpp" />
+    <ClCompile Include="..\src\inspector\security\Security_Preview.cpp" />
+    <ClCompile Include="..\src\rmlui_sdl\RmlUi_SDL.cpp" />
+    <ClCompile Include="..\src\rmlui_sdl\RmlUi_SDL_Renderer.cpp" />
+    <ClCompile Include="..\src\rmlui_sdl\RmlUi_SDL_Platform.cpp" />
+    <!-- cli -->
+    <ClCompile Include="..\src\cli\MsfCli.cpp" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Header files                                                           -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <ClInclude Include="..\src\canvas\Canvas_Linux.h" />
+    <ClInclude Include="..\src\canvas\Canvas_Win32.h" />
+    <ClInclude Include="..\src\pch.h" />
+    <ClInclude Include="..\src\resource.h" />
+    <ClInclude Include="..\src\Native.h" />
+    <ClInclude Include="..\src\shell\AppFrameTab.h" />
+    <ClInclude Include="..\src\shell\AppFrameTab_SDL.h" />
+    <ClInclude Include="..\src\shell\App_SDL.h" />
+    <ClInclude Include="..\src\shell\App_Win32.h" />
+    <ClInclude Include="..\src\shell\ChromeRml.h" />
+    <ClInclude Include="..\src\Utils.h" />
+    <ClInclude Include="..\src\version.h.in" />
+    <!-- shell -->
+    <ClInclude Include="..\src\shell\App.h" />
+    <ClInclude Include="..\src\shell\AppFrame.h" />
+    <ClInclude Include="..\src\shell\AppFrame_Win32.h" />
+    <ClInclude Include="..\src\shell\AppFrame_SDL.h" />
+    <ClInclude Include="..\src\shell\AppFrame_iOS.h" />
+    <ClInclude Include="..\src\shell\AppFrame_Mac.h" />
+    <ClInclude Include="..\src\shell\AppFrame_Android.h" />
+    <ClInclude Include="..\src\shell\AppFrame_Linux.h" />
+    <ClInclude Include="..\src\shell\UrlBarRml.h" />
+    <ClInclude Include="..\src\shell\WinUtils.h" />
+    <!-- canvas -->
+    <ClInclude Include="..\src\canvas\Canvas.h" />
+    <!-- updater -->
+    <ClInclude Include="..\src\updater\Updater.h" />
+    <ClInclude Include="..\src\updater\UpdaterWnd.h" />
+    <ClInclude Include="..\src\updater\UpdaterGeneric.h" />
+    <!-- settings -->
+    <!-- logger -->
+    <ClInclude Include="..\src\logger\Logger.h" />
+    <ClInclude Include="..\src\logger\ILogger.h" />
+    <!-- inspector -->
+    <ClInclude Include="..\src\inspector\InspectorRml.h" />
+    <ClInclude Include="..\src\inspector\preview3d\Preview3D.h" />
+    <ClInclude Include="..\src\settings_ui\SettingsRml.h" />
+    <ClInclude Include="..\src\release_notes\Markdown.h" />
+    <ClInclude Include="..\src\release_notes\ReleaseNotesRml.h" />
+    <ClInclude Include="..\src\inspector\common\Button.h" />
+    <ClInclude Include="..\src\inspector\common\Collapse.h" />
+    <ClInclude Include="..\src\inspector\elements\Elements.h" />
+    <ClInclude Include="..\src\inspector\console\Console.h" />
+    <ClInclude Include="..\src\inspector\sources\Sources.h" />
+    <ClInclude Include="..\src\inspector\network\Network.h" />
+    <ClInclude Include="..\src\inspector\performance\Performance.h" />
+    <ClInclude Include="..\src\inspector\memory\Memory.h" />
+    <ClInclude Include="..\src\inspector\storage\Storage.h" />
+    <ClInclude Include="..\src\inspector\security\Security.h" />
+    <ClInclude Include="..\src\rmlui_sdl\RmlUi_SDL.h" />
+    <ClInclude Include="..\src\rmlui_sdl\RmlUi_SDL_Renderer.h" />
+    <ClInclude Include="..\src\rmlui_sdl\RmlUi_SDL_Platform.h" />
+    <!-- cli -->
+    <ClInclude Include="..\src\cli\MsfCli.h" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Resource files                                                         -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <ResourceCompile Include="..\src\rubidium.rc" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Non-compiled platform sources (visible in VS but excluded from build)  -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <None Include="..\RELEASE" />
+    <None Include="..\src\inspector\InspectorRml_Style.inl" />
+    <None Include="..\src\main_SDL.cpp" />
+    <None Include="..\src\shell\App_SDL.cpp" />
+    <None Include="..\src\shell\AppFrame_SDL.cpp" />
+    <None Include="..\src\shell\AppFrame_iOS.cpp" />
+    <None Include="..\src\shell\AppFrame_Mac.cpp" />
+    <None Include="..\src\shell\AppFrame_Android.cpp" />
+    <None Include="..\src\shell\AppFrame_Linux.cpp" />
+    <None Include="..\src\canvas\Canvas_Linux.cpp" />
+    <None Include="..\src\shell\UrlBarRml.cpp" />
+    <None Include="..\src\updater\UpdaterGeneric.cpp" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Root-level project files                                               -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <None Include="..\.gitignore" />
+    <None Include="..\NOTICE" />
+    <None Include="..\README.md" />
+    <None Include="..\VERSION" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Packaging assets (pkg/)                                                -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <None Include="..\pkg\RubidiumSetup.cpp" />
+    <None Include="..\pkg\generate_manifest.cpp" />
+    <None Include="..\pkg\LICENSE.md" />
+    <None Include="..\pkg\manifest.json" />
+    <None Include="..\pkg\setup.rc.in" />
+    <None Include="..\pkg\signing-metadata.json" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- Build scripts (scripts/)                                               -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <None Include="..\scripts\build-windows.ps1" />
+    <None Include="..\scripts\build-linux.sh" />
+    <None Include="..\scripts\build-macos.sh" />
+    <None Include="..\scripts\build-deps.sh" />
+    <None Include="..\scripts\ci-windows.ps1" />
+    <None Include="..\scripts\commit-manifest.cmd" />
+  </ItemGroup>
+  <!-- ===================================================================== -->
+  <!-- CMake build files                                                      -->
+  <!-- ===================================================================== -->
+  <ItemGroup>
+    <None Include="..\src\CMakeLists.txt" />
+    <None Include="..\deps\CMakeLists.txt" />
+    <None Include="..\deps\sdl3.cmake" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\pkg\LICENSE.txt" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

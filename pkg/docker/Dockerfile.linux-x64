@@ -1,0 +1,15 @@
+# Linux x86_64 CI build
+# Build:  docker build -f docker/Dockerfile.linux-x64 -t rubidium-linux-x64 .
+# Run:    docker run --rm -v $(pwd)/..:/src rubidium-linux-x64
+FROM rubidium-base AS linux-x64
+
+# Vulkan SDK headers (for Filament)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvulkan-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/build.sh /build/build.sh
+RUN chmod +x /build/build.sh
+
+# Clang + libc++ set in base image via CC/CXX env vars
+ENTRYPOINT ["/build/build.sh", "linux-x64"]

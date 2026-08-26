@@ -1,0 +1,99 @@
+# Manual-only manifest registration (downloads Build artifacts, updates pkg/manifest.json).
+#
+# Escape hatch only — normal flow is Deploy (manifest + CDN + git push in one run).
+#
+# Optional secret MANIFEST_CDN_URL — base URL ending with / (default production CDN).
+#
+name: Register manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Build workflow run id (leave empty to use latest successful Build on main)
+        required: false
+        default: ""
+
+concurrency:
+  group: register-manifest-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  register:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Resolve Build run id
+        id: build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RID="${{ github.event.inputs.build_run_id }}"
+          if [ -z "$RID" ]
+          then
+            RID=$(gh run list --repo "${{ github.repository }}" --workflow build.yml \
+              --branch main --status success -L 1 \
+              --json databaseId -q '.[0].databaseId')
+          fi
+          if [ -z "$RID" ] || [ "$RID" = "null" ]
+          then
+            echo "Could not resolve Build run id."
+            exit 1
+          fi
+          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
+          echo "Using Build run id: $RID"
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Build GenerateManifest
+        run: |
+          cmake -S pkg -B gm-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build gm-build --parallel "$(nproc)"
+
+      - name: Register manifest entries
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          MANIFEST_CDN_URL: ${{ secrets.MANIFEST_CDN_URL }}
+        run: |
+          chmod +x scripts/register-manifest-ci.sh
+          DEFAULT_CDN="https://cdn.rp1.com/rubidium/"
+          export MANIFEST_CDN_URL="${MANIFEST_CDN_URL:-$DEFAULT_CDN}"
+          scripts/register-manifest-ci.sh "${{ steps.build.outputs.run_id }}"
+
+      - name: Commit and push manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST_CDN_URL: ${{ secrets.MANIFEST_CDN_URL }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout origin/main -- pkg/manifest.json
+          DEFAULT_CDN="https://cdn.rp1.com/rubidium/"
+          export MANIFEST_CDN_URL="${MANIFEST_CDN_URL:-$DEFAULT_CDN}"
+          chmod +x scripts/register-manifest-ci.sh
+          scripts/register-manifest-ci.sh "${{ steps.build.outputs.run_id }}"
+          git checkout -B main origin/main
+          git add pkg/manifest.json
+          if git diff --staged --quiet
+          then
+            echo "pkg/manifest.json unchanged — nothing to commit."
+            exit 0
+          fi
+          VERSION="$(tr -d ' \r\n' < VERSION)"
+          git commit -m "release(manifest): register CI artifacts v${VERSION}"
+          git push origin HEAD:main

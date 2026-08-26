@@ -1,0 +1,301 @@
+# Deploy — release to CDN after a successful Build (or manual dispatch).
+#
+# 1. Download installers from the Build run (triggering run, or latest on main).
+# 2. Stage download/ + releases/<version>/ (scripts/layout-cdn-artifacts.sh).
+# 3. Generate pkg/manifest.json from staged files (SHA-256, promote current.stable).
+# 4. SCP rubidium/ tree to Buru (DEPLOY_* secrets).
+# 5. Commit and push pkg/manifest.json.
+#
+# Auto-runs when Build completes successfully on main (VERSION push or manual
+# Build with Deploy checked). Manual Build without Deploy skips this workflow.
+# Manifest-only pushes do not re-trigger Build (see build.yml paths: VERSION).
+# Jenkins still owns windows-x64 manifest registration separately.
+#
+name: Deploy
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  should-deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-22.04
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]
+          then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          EVENT="${{ github.event.workflow_run.event }}"
+          if [ "$EVENT" = "push" ]
+          then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          REPO="${{ github.repository }}"
+          mkdir -p /tmp/deploy-intent
+          if gh run download "$RUN_ID" --repo "$REPO" -n deploy-intent -D /tmp/deploy-intent
+          then
+            if grep -qx 'deploy' /tmp/deploy-intent/intent.txt
+            then
+              echo "proceed=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Deploy skipped — manual Build without Deploy checkbox."
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Deploy skipped — manual Build has no deploy-intent artifact."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: should-deploy
+    if: needs.should-deploy.outputs.proceed == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Stage CDN tree from Build artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          REQUIRED_ARTIFACTS="rubidium-linux-x64 rubidium-macos-universal-dmg"
+
+          run_has_all_artifacts() {
+            local rid="$1"
+            local names missing=""
+            names=$(gh api "repos/${REPO}/actions/runs/${rid}/artifacts?per_page=100" \
+              --jq '.artifacts[].name' 2>/dev/null || true)
+            for NAME in $REQUIRED_ARTIFACTS
+            do
+              if ! echo "$names" | grep -qx "$NAME"
+              then
+                missing="${missing} ${NAME}"
+              fi
+            done
+            if [ -z "$missing" ]
+            then
+              return 0
+            fi
+            echo "  run ${rid} missing:${missing}" >&2
+            return 1
+          }
+
+          RUN_ID=""
+          if [ -n "${BUILD_RUN_ID:-}" ]
+          then
+            echo "Deploy triggered by successful Build run ${BUILD_RUN_ID}"
+            if run_has_all_artifacts "$BUILD_RUN_ID"
+            then
+              RUN_ID="$BUILD_RUN_ID"
+            else
+              echo "::error::Triggering Build run ${BUILD_RUN_ID} is missing required artifacts."
+              exit 1
+            fi
+          else
+            echo "Resolving most recent successful Build on main with all platform artifacts..."
+            while IFS= read -r rid
+            do
+              [ -z "$rid" ] && continue
+              CREATED=$(gh run view "$rid" --repo "$REPO" --json createdAt -q '.createdAt' 2>/dev/null || true)
+              echo "  candidate: run ${rid} (${CREATED:-unknown time})"
+              if run_has_all_artifacts "$rid"
+              then
+                RUN_ID="$rid"
+                echo "  using run ${rid}"
+                break
+              fi
+            done < <(gh run list --repo "$REPO" --workflow build.yml \
+              --branch main --status success -L 25 \
+              --json databaseId -q '.[].databaseId')
+          fi
+
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]
+          then
+            echo "::error::No successful Build on main with all required artifacts (${REQUIRED_ARTIFACTS}). Run Build first, then Deploy again."
+            exit 1
+          fi
+
+          echo "Using Build run: $RUN_ID (https://github.com/${REPO}/actions/runs/${RUN_ID})"
+          gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?per_page=100" \
+            --jq '.artifacts[] | "  \(.name) (\(.size_in_bytes) bytes)"' 2>/dev/null || true
+
+          VERSION=$(tr -d ' \r\n' < VERSION)
+          echo "VERSION=$VERSION"
+
+          ARTIFACTS="$(pwd)/artifact-downloads"
+          mkdir -p "$ARTIFACTS"
+          DOWNLOADED=0
+
+          for NAME in $REQUIRED_ARTIFACTS
+          do
+            mkdir -p "$ARTIFACTS/$NAME"
+            if gh run download "$RUN_ID" --repo "$REPO" -n "$NAME" -D "$ARTIFACTS/$NAME"
+            then
+              echo "  downloaded: $NAME"
+              DOWNLOADED=$((DOWNLOADED + 1))
+            else
+              echo "::error::Required artifact missing from run ${RUN_ID}: $NAME"
+              exit 1
+            fi
+          done
+
+          if [ "$DOWNLOADED" -eq 0 ]
+          then
+            echo "::error::Run ${RUN_ID} has no rubidium-* artifacts. Re-run Build on main (find-sneeze must pass), then Deploy."
+            exit 1
+          fi
+
+          STAGING="$(pwd)/cdn-staging"
+          mkdir -p "$STAGING"
+          bash scripts/layout-cdn-artifacts.sh "$ARTIFACTS" "$STAGING" "$VERSION"
+
+          echo "Staged installers:"
+          find "$STAGING/rubidium" -type f -print 2>/dev/null | sort || true
+
+          PKG_COUNT=$(find "$STAGING/rubidium/releases" -type f 2>/dev/null | wc -l | tr -d ' ')
+          if [ "${PKG_COUNT:-0}" -eq 0 ]
+          then
+            echo "::error::Nothing under releases/${VERSION}/ — wait for platform Build jobs or fix artifacts."
+            exit 1
+          fi
+
+          echo "RUBIDIUM_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "STAGING_DIR=${STAGING}" >> "$GITHUB_ENV"
+
+      - name: Install deps for GenerateManifest
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Build GenerateManifest
+        run: |
+          cmake -S pkg -B gm-build -DCMAKE_BUILD_TYPE=Release
+          cmake --build gm-build --parallel "$(nproc)"
+
+      - name: Register manifest from staged uploads
+        env:
+          MANIFEST_CDN_URL: ${{ secrets.MANIFEST_CDN_URL }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/register-manifest-staged.sh
+          DEFAULT_CDN="https://cdn.rp1.com/rubidium/"
+          export MANIFEST_CDN_URL="${MANIFEST_CDN_URL:-$DEFAULT_CDN}"
+          BRANCH="${GITHUB_REF_NAME:-main}"
+          git fetch origin "$BRANCH"
+          git checkout "origin/${BRANCH}" -- pkg/manifest.json
+          bash scripts/register-manifest-staged.sh \
+            "${STAGING_DIR}/rubidium/releases/${RUBIDIUM_VERSION}" \
+            "$(pwd)"
+          if [ ! -f pkg/manifest.json ]
+          then
+            echo "::error::register-manifest did not update pkg/manifest.json"
+            exit 1
+          fi
+          cp -f pkg/manifest.json "${STAGING_DIR}/rubidium/manifest.json"
+          echo "Generated manifest.json (preview):"
+          head -50 "${STAGING_DIR}/rubidium/manifest.json"
+
+      - name: Upload rubidium/ tree via SCP
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_PRIVATE_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ] \
+            || [ -z "${DEPLOY_USER:-}" ]
+          then
+            echo "::error::Missing DEPLOY_KEY, DEPLOY_HOST, or DEPLOY_USER repo secrets."
+            exit 1
+          fi
+          if [ ! -f "${STAGING_DIR}/rubidium/manifest.json" ]
+          then
+            echo "::error::${STAGING_DIR}/rubidium/manifest.json missing — register step failed."
+            exit 1
+          fi
+
+          echo "Uploading to CDN:"
+          find "${STAGING_DIR}/rubidium" -type f -print | sort
+
+          DEPLOY_PATH="$(printf '%s' "${DEPLOY_PATH:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [ -z "$DEPLOY_PATH" ] || [ "$DEPLOY_PATH" = "/" ]
+          then
+            echo "DEPLOY_PATH empty or '/' — using '.' (SFTP login root)."
+            DEPLOY_PATH="."
+          fi
+          echo "Remote path: ${DEPLOY_PATH}"
+
+          PORT="${DEPLOY_PORT:-22}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          scp -P "$PORT" -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            -r "${STAGING_DIR}/rubidium/." "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
+
+          rm -f ~/.ssh/deploy_key
+          echo "SCP complete."
+
+      - name: Commit and push manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MANIFEST_CDN_URL: ${{ secrets.MANIFEST_CDN_URL }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="${GITHUB_REF_NAME:-main}"
+          DEFAULT_CDN="https://cdn.rp1.com/rubidium/"
+          export MANIFEST_CDN_URL="${MANIFEST_CDN_URL:-$DEFAULT_CDN}"
+          git fetch origin "$BRANCH"
+          # Jenkins or a prior deploy may have updated manifest.json on main while
+          # this job was uploading to CDN — merge by re-registering on latest main.
+          git checkout "origin/${BRANCH}" -- pkg/manifest.json
+          chmod +x scripts/register-manifest-staged.sh
+          bash scripts/register-manifest-staged.sh \
+            "${STAGING_DIR}/rubidium/releases/${RUBIDIUM_VERSION}" \
+            "$(pwd)"
+          git checkout -B "$BRANCH" "origin/${BRANCH}"
+          git add pkg/manifest.json
+          if git diff --staged --quiet
+          then
+            echo "pkg/manifest.json unchanged — nothing to commit."
+            exit 0
+          fi
+          git commit -m "release(manifest): register CDN artifacts v${RUBIDIUM_VERSION}"
+          git push origin "HEAD:${BRANCH}"

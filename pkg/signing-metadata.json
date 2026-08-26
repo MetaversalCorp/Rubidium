@@ -1,0 +1,15 @@
+{
+   "Endpoint": "https://wus2.codesigning.azure.net/",
+   "CodeSigningAccountName": "Metaversal",
+   "CertificateProfileName": "Rubidium",
+   "ExcludeCredentials": [
+      "ManagedIdentityCredential",
+      "WorkloadIdentityCredential",
+      "SharedTokenCacheCredential",
+      "VisualStudioCredential",
+      "VisualStudioCodeCredential",
+      "AzurePowerShellCredential",
+      "AzureDeveloperCliCredential",
+      "InteractiveBrowserCredential"
+   ]
+}

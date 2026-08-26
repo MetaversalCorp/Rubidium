@@ -1,0 +1,35 @@
+# Dependency source clones (shared across configs)
+deps/repos/
+
+# Dependency build + install trees (per platform+config)
+deps/builds/
+
+# Downloaded font files (fetched by deps/fonts.cmake)
+deps/fonts/
+
+# Rubidium build output (per platform+config)
+builds/
+
+# Per-developer session logs (not product source)
+.cursor/session-*.md
+
+# Legacy layout (kept until migration verified)
+libs/
+build/
+
+# Local manifest-register / standalone GenerateManifest cmake scratch
+gm-build/
+_manifest-artifacts/
+_manifest-staging/
+.vs/
+.vscode/
+*.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+
+# OS files
+Thumbs.db
+.DS_Store
+*.bak

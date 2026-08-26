@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="com.rp1.Rubidium">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- OpenXR support (optional, for VR headsets) -->
+    <uses-feature android:name="android.hardware.vulkan.level" android:version="1" android:required="false" />
+
+    <application
+        android:label="Rubidium"
+        android:icon="@mipmap/ic_launcher"
+        android:hasCode="true"
+        android:allowBackup="true">
+
+        <!-- Thin SDLActivity subclass that pre-loads Halogen + ANARI via
+             System.loadLibrary so Filament's native code lives in the main
+             linker namespace rather than the dlopen-only one. -->
+        <activity
+            android:name="com.rp1.Rubidium.MainActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode"
+            android:screenOrientation="landscape">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Tell SDL which native library to load -->
+            <meta-data android:name="SDL_MAIN_ENTRY_POINT" android:value="main" />
+        </activity>
+    </application>
+</manifest>

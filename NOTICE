@@ -1,0 +1,9 @@
+Rubidium - Metaverse Browser
+Copyright 2026 Metaversal Corporation. All rights reserved.
+
+Rubidium uses the Sneeze engine library (Apache License 2.0).
+See the Sneeze NOTICE file for engine-level third-party attributions.
+
+This product includes software developed by third parties:
+
+- SDL3 (c) Sam Lantinga - zlib License

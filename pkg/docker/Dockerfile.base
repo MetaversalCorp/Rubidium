@@ -1,0 +1,20 @@
+# Base image for Rubidium/Sneeze CI builds
+# Uses clang + libc++ — same stdlib as macOS and Android NDK.
+FROM ubuntu:22.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang lld libc++-dev libc++abi-dev \
+    cmake ninja-build git ca-certificates curl \
+    libssl-dev python3 pkg-config make \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CC=clang CXX=clang++
+
+# Install Rust toolchain (needed for Wasmtime)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /build

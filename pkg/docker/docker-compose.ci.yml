@@ -1,0 +1,38 @@
+# Docker Compose for CI builds
+# Usage:
+#   docker compose -f docker/docker-compose.ci.yml build base
+#   docker compose -f docker/docker-compose.ci.yml run linux-x64
+
+services:
+  base:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    image: rubidium-base
+
+  linux-x64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.linux-x64
+    depends_on: [base]
+    volumes:
+      - ..:/src
+    working_dir: /src/Rubidium
+
+  linux-arm64:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.linux-arm64
+    depends_on: [base]
+    volumes:
+      - ..:/src
+    working_dir: /src/Rubidium
+
+  android:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.android
+    depends_on: [base]
+    volumes:
+      - ..:/src
+    working_dir: /src/Rubidium

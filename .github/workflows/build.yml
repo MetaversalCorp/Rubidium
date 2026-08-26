@@ -1,0 +1,1452 @@
+name: Build
+
+# Auto-runs on VERSION bumps to main (release cut). Manifest-only commits from
+# Deploy / commit-manifest.cmd do not retrigger Build.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'VERSION'
+  workflow_dispatch:
+    inputs:
+      sneeze_run_id:
+        description: >-
+          Optional Sneeze workflow run ID (from github.com/.../actions/runs/ID).
+          Skips auto-discovery when set.
+        required: false
+        type: string
+      deploy:
+        description: Run Deploy after a successful build (manual runs only)
+        required: false
+        type: boolean
+        default: false
+      notarize:
+        description: Notarize macOS DMG for Gatekeeper (manual production builds)
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SNEEZE_REPO: MetaversalCorp/Sneeze
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Manual Build only — records whether Deploy should run after success.
+  # VERSION pushes always deploy; unchecked manual runs skip Deploy.
+  # ---------------------------------------------------------------------------
+
+  deploy-intent:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Record deploy intent
+        run: |
+          if [ "${{ inputs.deploy }}" = "true" ]
+          then
+            echo "deploy" > intent.txt
+          else
+            echo "skip" > intent.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-intent
+          path: intent.txt
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Find matching Sneeze CI run — same branch, fallback to main
+  # ---------------------------------------------------------------------------
+
+  find-sneeze:
+    runs-on: ubuntu-22.04
+    outputs:
+      run_id: ${{ steps.find.outputs.run_id }}
+      branch: ${{ steps.find.outputs.branch }}
+    steps:
+      - name: Find latest Sneeze run with artifacts
+        id: find
+        env:
+          GH_TOKEN: ${{ secrets.SNEEZE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Debug must go to stderr — stdout is only for the chosen run id
+          # (RUN_ID=$(find_run ...) captures stdout and hides it from the log).
+          log() { echo "$*" >&2; }
+
+          if [ -z "${GH_TOKEN:-}" ]
+          then
+            echo "::error::SNEEZE_TOKEN is not set. Add a repo/org secret with read access to ${{ env.SNEEZE_REPO }} (Actions + Contents). See .github/CI.md"
+            exit 1
+          fi
+
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          log "::group::find-sneeze (revision 2026-06-01 — always latest main artifacts)"
+          log "Rubidium branch: $BRANCH (Sneeze artifacts always from main)"
+          log "GITHUB_RUN_ID=${GITHUB_RUN_ID:-?}  GITHUB_SHA=${GITHUB_SHA:-?}"
+          log "SNEEZE_REPO=${{ env.SNEEZE_REPO }}"
+
+          auth_fail() {
+            log "$1"
+            log "::endgroup::"
+            echo "::error::$1"
+            exit 1
+          }
+
+          whoami=$(gh api user --jq .login 2>&1) || whoami=""
+          if [ -z "$whoami" ] || echo "$whoami" | grep -qi 'bad credentials'
+          then
+            auth_fail "SNEEZE_TOKEN rejected by GitHub (HTTP 401). Create a new PAT with read access to MetaversalCorp/Sneeze, authorize org SSO, update the Rubidium repo secret SNEEZE_TOKEN (no quotes or trailing newline)."
+          fi
+          log "SNEEZE_TOKEN authenticates as GitHub user: ${whoami}"
+
+          # Writes artifact names (one per line) to $2; prints "total linux macos android ios" to stdout.
+          fetch_artifact_stats() {
+            local rid="$1"
+            local names_file="$2"
+            local page=1
+            local per_page=100
+            local resp n_page n_total n_linux n_macos n_android n_ios
+
+            : > "$names_file"
+            n_total=0
+            while true
+            do
+              if ! resp=$(gh api \
+                "repos/${{ env.SNEEZE_REPO }}/actions/runs/${rid}/artifacts?per_page=${per_page}&page=${page}" 2>&1)
+              then
+                log "$resp"
+                return 1
+              fi
+              n_total=$(echo "$resp" | jq '.total_count')
+              n_page=$(echo "$resp" | jq '.artifacts | length')
+              if [ "$n_page" -gt 0 ]
+              then
+                echo "$resp" | jq -r '.artifacts[].name' >> "$names_file"
+              fi
+              if [ "$n_page" -eq 0 ] || [ $((page * per_page)) -ge "$n_total" ]
+              then
+                break
+              fi
+              page=$((page + 1))
+            done
+
+            n_linux=$(grep -c '^linux-' "$names_file" 2>/dev/null || echo 0)
+            n_macos=$(grep -c '^macos-' "$names_file" 2>/dev/null || echo 0)
+            n_android=$(grep -c '^android-' "$names_file" 2>/dev/null || echo 0)
+            n_ios=$(grep -c '^ios-' "$names_file" 2>/dev/null || echo 0)
+            printf '%s %s %s %s %s\n' "$n_total" "$n_linux" "$n_macos" "$n_android" "$n_ios"
+            return 0
+          }
+
+          dump_artifact_names() {
+            local rid="$1"
+            local names_file="$2"
+            local n_lines
+
+            log ""
+            log "  --- artifacts for run ${rid} (https://github.com/${{ env.SNEEZE_REPO }}/actions/runs/${rid}) ---"
+            if [ ! -s "$names_file" ]
+            then
+              log "  (none — API total_count may be >0 but names empty, or token cannot read artifacts)"
+              return 0
+            fi
+            n_lines=$(wc -l < "$names_file" | tr -d ' ')
+            log "  ${n_lines} artifact name(s) listed:"
+            sort "$names_file" | while IFS= read -r line
+            do
+              log "    ${line}"
+            done
+          }
+
+          explain_qualify() {
+            local n_total="$1"
+            local n_linux="$2"
+            local n_macos="$3"
+            local n_android="$4"
+
+            if [ "$n_linux" -ge 1 ] && [ "$n_macos" -ge 1 ] && [ "$n_android" -ge 1 ]
+            then
+              log "  qualify: yes (has linux-, macos-, and android- artifacts)"
+              return 0
+            fi
+            if [ "$n_linux" -ge 10 ] || [ "$n_macos" -ge 10 ] || [ "$n_android" -ge 10 ]
+            then
+              log "  qualify: yes (one platform has 10+ artifacts)"
+              return 0
+            fi
+            if [ "$n_total" -ge 40 ]
+            then
+              log "  qualify: yes (total_count >= 40)"
+              return 0
+            fi
+            log "  qualify: no (need linux>=1 AND macos>=1 AND android>=1, or one platform>=10, or total>=40; got total=${n_total} linux=${n_linux} macos=${n_macos} android=${n_android})"
+            return 1
+          }
+
+          run_qualifies() {
+            explain_qualify "$@" >/dev/null
+          }
+
+          validate_run_id() {
+            local rid="$1"
+            local stats n_total n_linux n_macos n_android n_ios
+            local names_file
+            names_file=$(mktemp)
+
+            if ! stats=$(fetch_artifact_stats "$rid" "$names_file")
+            then
+              rm -f "$names_file"
+              echo "::error::Cannot list artifacts for Sneeze run ${rid}"
+              exit 1
+            fi
+            read -r n_total n_linux n_macos n_android n_ios <<< "$stats"
+            log "  run ${rid}: API total_count=${n_total} (linux=${n_linux} macos=${n_macos} android=${n_android} ios=${n_ios})"
+            dump_artifact_names "$rid" "$names_file"
+            if ! explain_qualify "$n_total" "$n_linux" "$n_macos" "$n_android"
+            then
+              rm -f "$names_file"
+              echo "::error::Sneeze run ${rid} did not pass qualification. See artifact list above."
+              exit 1
+            fi
+            rm -f "$names_file"
+          }
+
+          # Prints only the run id on stdout; all debug on stderr.
+          find_run() {
+            local branch="$1"
+            local body rid found="" stats
+            local -a run_ids=()
+            local n_total n_linux n_macos n_android n_ios
+            local latest_parent=""
+            local names_file
+            names_file=$(mktemp)
+
+            log ""
+            log "Scanning ${{ env.SNEEZE_REPO }} successful runs on branch: ${branch}"
+
+            if ! body=$(gh api \
+              "repos/${{ env.SNEEZE_REPO }}/actions/runs?branch=${branch}&status=success&per_page=30" 2>&1)
+            then
+              log "$body"
+              rm -f "$names_file"
+              if echo "$body" | grep -qi 'bad credentials'
+              then
+                auth_fail "Cannot list Sneeze workflow runs: Bad credentials. Replace SNEEZE_TOKEN on Rubidium."
+              fi
+              log "::error::Cannot list Sneeze workflow runs. Check SNEEZE_TOKEN."
+              return 1
+            fi
+
+            if echo "$body" | grep -qi '"status": "401"' || echo "$body" | grep -qi 'Bad credentials'
+            then
+              log "$body"
+              rm -f "$names_file"
+              auth_fail "GitHub API returned 401 listing Sneeze runs. Replace SNEEZE_TOKEN on Rubidium."
+            fi
+
+            if ! echo "$body" | jq -e '.workflow_runs | type == "array"' >/dev/null 2>&1
+            then
+              log "Unexpected API body:"
+              echo "$body" | head -20 >&2
+              rm -f "$names_file"
+              return 1
+            fi
+
+            local total_returned
+            total_returned=$(echo "$body" | jq '.workflow_runs | length')
+            log "API returned ${total_returned} successful run(s)"
+            log "Recent runs (id | name | event | created_at):"
+            echo "$body" | jq -r '.workflow_runs[] | "  \(.id) | \(.name) | \(.event) | \(.created_at)"' | head -15 >&2
+
+            mapfile -t run_ids < <(echo "$body" | jq -r '.workflow_runs[] | select(.event != "workflow_call") | .id')
+            latest_parent=$(echo "$body" | jq -r '.workflow_runs[] | select(.event != "workflow_call") | .id' | head -1)
+
+            if [ "${#run_ids[@]}" -eq 0 ]
+            then
+              log "No parent runs (only workflow_call children?). Trying ALL successful runs including children..."
+              mapfile -t run_ids < <(echo "$body" | jq -r '.workflow_runs[].id')
+            fi
+
+            if [ "${#run_ids[@]}" -eq 0 ]
+            then
+              log "No runs to inspect."
+              rm -f "$names_file"
+              return 1
+            fi
+
+            log "Inspecting ${#run_ids[@]} run(s) for artifacts..."
+
+            for rid in "${run_ids[@]}"
+            do
+              if ! [[ "$rid" =~ ^[0-9]+$ ]]
+              then
+                continue
+              fi
+              : > "$names_file"
+              if ! stats=$(fetch_artifact_stats "$rid" "$names_file")
+              then
+                log "::warning::Skipping run ${rid} — artifact API error"
+                continue
+              fi
+              read -r n_total n_linux n_macos n_android n_ios <<< "$stats"
+              log ""
+              log "=== run ${rid} ==="
+              log "  API total_count=${n_total}  linux=${n_linux}  macos=${n_macos}  android=${n_android}  ios=${n_ios}"
+              dump_artifact_names "$rid" "$names_file"
+              if explain_qualify "$n_total" "$n_linux" "$n_macos" "$n_android"
+              then
+                found="$rid"
+                break
+              fi
+            done
+
+            rm -f "$names_file"
+
+            if [ -z "$found" ]
+            then
+              log ""
+              log "No qualifying run on branch ${branch}."
+              if [ -n "$latest_parent" ]
+              then
+                log "Latest parent: https://github.com/${{ env.SNEEZE_REPO }}/actions/runs/${latest_parent}"
+              fi
+              return 1
+            fi
+
+            printf '%s\n' "$found"
+            return 0
+          }
+
+          MANUAL_RUN_ID="${{ github.event.inputs.sneeze_run_id }}"
+          RUN_ID=""
+          # Both repos auto-build main on every update — always take the newest
+          # successful Sneeze CI artifact set from main, not a feature branch.
+          SNEEZE_BRANCH="main"
+
+          if [ -n "$MANUAL_RUN_ID" ]
+          then
+            log "Using workflow_dispatch sneeze_run_id=${MANUAL_RUN_ID}"
+            validate_run_id "$MANUAL_RUN_ID"
+            RUN_ID="$MANUAL_RUN_ID"
+          else
+            RUN_ID=""
+            log "Selecting latest qualifying Sneeze CI run on main..."
+            if find_run "main" > /tmp/sneeze_run_id.txt
+            then
+              RUN_ID=$(tr -d '\r\n' < /tmp/sneeze_run_id.txt)
+            fi
+            rm -f /tmp/sneeze_run_id.txt
+            if ! [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+            then
+              echo "::error::No qualifying Sneeze CI run on main. Re-run Sneeze Build on main, or set workflow_dispatch sneeze_run_id to a specific run. See find-sneeze log above."
+              log "::endgroup::"
+              exit 1
+            fi
+            log "Selected Sneeze run_id=${RUN_ID} (latest artifacts on main)"
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "branch=$SNEEZE_BRANCH" >> "$GITHUB_OUTPUT"
+          log "::endgroup::"
+
+  # ---------------------------------------------------------------------------
+  # SDL3 — built from source per platform, cached by platform+tag
+  # ---------------------------------------------------------------------------
+
+  sdl3:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runs-on: ubuntu-22.04
+            cmake-args: "-DSDL_STATIC=ON -DSDL_SHARED=OFF"
+            system-deps: "libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libwayland-dev libxkbcommon-dev libdrm-dev libgbm-dev libasound2-dev libpulse-dev libibus-1.0-dev ninja-build"
+          - platform: macos
+            runs-on: macos-14
+            cmake-args: "-DSDL_STATIC=ON -DSDL_SHARED=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0"
+          # - platform: ios
+          #   runs-on: macos-14
+          #   cmake-args: "-DSDL_STATIC=ON -DSDL_SHARED=OFF -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0"
+          # - platform: android
+          #   runs-on: ubuntu-22.04
+          #   cmake-args: "-DSDL_STATIC=OFF -DSDL_SHARED=ON -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26"
+          #   setup-ndk: true
+          #   system-deps: "ninja-build"
+          # Quest reuses the android sdl3 artifact — disabled with android for now.
+    runs-on: ${{ matrix.runs-on }}
+    env:
+      SDL3_TAG: release-3.2.12
+    steps:
+      - name: Install system deps
+        if: matrix.system-deps != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.system-deps }}
+
+      - name: Setup Android NDK
+        if: matrix.setup-ndk
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - name: Cache SDL3 install
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: SDL/install
+          key: sdl3-${{ matrix.platform }}-${{ env.SDL3_TAG }}-univ2
+
+      - name: Clone SDL3
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: libsdl-org/SDL
+          ref: ${{ env.SDL3_TAG }}
+          path: SDL/src
+
+      - name: Build SDL3
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path || '' }}
+        run: |
+          CMAKE_ARGS="${{ matrix.cmake-args }}"
+          if [ -n "$ANDROID_NDK_ROOT" ]; then
+            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake"
+          fi
+          if [ "${{ matrix.platform }}" = "macos" ]; then
+            cmake -S SDL/src -B SDL/build -GNinja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/SDL/install \
+              -DSDL_STATIC=ON -DSDL_SHARED=OFF \
+              -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          else
+            # shellcheck disable=SC2086
+            cmake -S SDL/src -B SDL/build -GNinja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/SDL/install \
+              $CMAKE_ARGS
+          fi
+          cmake --build SDL/build --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          cmake --install SDL/build
+
+      - name: Upload SDL3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-${{ matrix.platform }}
+          path: SDL/install
+          retention-days: 3
+
+  # ---------------------------------------------------------------------------
+  # Linux x64 — clang + libc++
+  # ---------------------------------------------------------------------------
+
+  linux:
+    needs: [find-sneeze, sdl3]
+    if: needs.find-sneeze.outputs.run_id != ''
+    runs-on: ubuntu-22.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sneeze artifacts (including wasmtime/filament src + build trees) total
+      # several GB per platform; ubuntu-22.04 runners only have ~14GB free.
+      # Drop unused preinstalled toolchains before the big download.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/local/lib/android \
+            /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+            /opt/hostedtoolcache/go /usr/share/swift 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h /
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld libc++-dev libc++abi-dev \
+            libvulkan-dev libgl-dev libx11-dev ninja-build
+
+      - name: Checkout Sneeze
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          ref: ${{ needs.find-sneeze.outputs.branch }}
+          path: Sneeze
+          token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download Sneeze libs
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: linux-libs
+          path: sneeze-libs
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download SDL3
+        uses: actions/download-artifact@v4
+        with:
+          name: sdl3-linux
+          path: sdl3-install
+
+      - name: Arrange Sneeze libs
+        run: |
+          rm -rf Sneeze/libs-linux
+          if [ -d sneeze-libs/libs-linux ]; then
+            mv sneeze-libs/libs-linux Sneeze/libs-linux
+          else
+            mkdir -p Sneeze
+            mv sneeze-libs Sneeze/libs-linux
+          fi
+          rm -rf sneeze-libs
+          find Sneeze/libs-linux -path '*/install/bin/*' -type f -exec chmod +x {} +
+          echo "Sneeze libs:" && ls Sneeze/libs-linux/
+
+      - name: Download UI fonts
+        run: |
+          chmod +x scripts/build-deps.sh
+          bash scripts/build-deps.sh --only fonts --platform linux-x64 --config Release
+          test -f deps/fonts/Inter/Inter-Regular.ttf
+
+      - name: Build Rubidium
+        run: |
+          cmake -S src -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/Sneeze/cmake/toolchain-linux-clang.cmake \
+            -DSNEEZE_DIR=${{ github.workspace }}/Sneeze \
+            -DLIBS_DIR=${{ github.workspace }}/Sneeze/libs-linux \
+            -DSDL3_ROOT=${{ github.workspace }}/sdl3-install
+          cmake --build build --parallel $(nproc)
+
+      - name: Verify Linux runtime bundle
+        run: |
+          BIN=build/install/release/bin
+          for f in Rubidium libwasmtime.so libanari.so libanari_library_halogen.so; do
+            test -e "$BIN/$f" || { echo "::error::Missing $BIN/$f"; exit 1; }
+          done
+          test -f "$BIN/fonts/Inter/Inter-Regular.ttf" \
+            || { echo "::error::Missing $BIN/fonts/Inter/Inter-Regular.ttf"; exit 1; }
+          ldd "$BIN/Rubidium" | head -30
+          ldd "$BIN/libanari_library_halogen.so" | head -10
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-linux-x64
+          path: build/install/release/bin/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # macOS universal (arm64 + x86_64)
+  # ---------------------------------------------------------------------------
+
+  macos:
+    needs: [find-sneeze, sdl3]
+    if: needs.find-sneeze.outputs.run_id != ''
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Sneeze
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          ref: ${{ needs.find-sneeze.outputs.branch }}
+          path: Sneeze
+          token: ${{ secrets.SNEEZE_TOKEN }}
+
+      # Use the final macos-libs bundle only. Downloading pattern macos-* also
+      # pulls per-dep artifacts (macos-curl, etc.); mv merge order can leave a
+      # stale arm64-only curl over the universal lib from macos-libs.
+      - name: Download Sneeze libs
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: macos-libs
+          path: sneeze-libs
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download SDL3
+        uses: actions/download-artifact@v4
+        with:
+          name: sdl3-macos
+          path: sdl3-install
+
+      - name: Arrange Sneeze libs
+        run: |
+          rm -rf Sneeze/libs-macos
+          if [ -d sneeze-libs/libs-macos ]; then
+            mv sneeze-libs/libs-macos Sneeze/libs-macos
+          else
+            mkdir -p Sneeze
+            mv sneeze-libs Sneeze/libs-macos
+          fi
+          rm -rf sneeze-libs
+          find Sneeze/libs-macos -path '*/install/bin/*' -type f -exec chmod +x {} +
+          echo "Sneeze libs:" && ls Sneeze/libs-macos/
+          CURL_LIB=Sneeze/libs-macos/curl/install/lib/libcurl.a
+          echo "=== $CURL_LIB ==="
+          lipo -info "$CURL_LIB"
+          lipo -info "$CURL_LIB" | grep -q arm64
+          lipo -info "$CURL_LIB" | grep -q x86_64
+
+      # Universal MoltenVK is bundled inside Rubidium.app (not Homebrew — arm64-only).
+      - name: Cache universal MoltenVK
+        id: mvk_cache
+        uses: actions/cache@v4
+        with:
+          path: moltenvk-universal
+          key: moltenvk-universal-v1.2.10-${{ hashFiles('scripts/build-moltenvk-universal.sh') }}
+
+      - name: Build universal MoltenVK
+        if: steps.mvk_cache.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-moltenvk-universal.sh
+          bash scripts/build-moltenvk-universal.sh "${{ github.workspace }}/moltenvk-universal"
+
+      - name: Download UI fonts
+        run: |
+          chmod +x scripts/build-deps.sh
+          bash scripts/build-deps.sh --only fonts --platform macos-universal --config Release
+          test -f deps/fonts/Inter/Inter-Regular.ttf
+
+      - name: Build Rubidium
+        run: |
+          cmake -S src -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DRUBIDIUM_PLATFORM=macos-universal \
+            -DMOLTENVK_DYLIB=${{ github.workspace }}/moltenvk-universal/libMoltenVK.dylib \
+            -DSNEEZE_DIR=${{ github.workspace }}/Sneeze \
+            -DLIBS_DIR=${{ github.workspace }}/Sneeze/libs-macos \
+            -DSDL3_ROOT=${{ github.workspace }}/sdl3-install
+          cmake --build build --parallel $(sysctl -n hw.ncpu)
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_APP_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64:-}" ]
+          then
+            echo "Apple signing secrets not configured — skipping certificate import."
+            exit 0
+          fi
+          CERT_P12="$RUNNER_TEMP/rubidium-dev-id.p12"
+          KEYCHAIN="$RUNNER_TEMP/rubidium-signing.keychain-db"
+          KEYCHAIN_PASS="rubidium-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "$APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64" | base64 --decode > "$CERT_P12"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security import "$CERT_P12" -k "$KEYCHAIN" \
+            -P "$APPLE_DEVELOPER_ID_APP_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN"
+          echo "RUBIDIUM_SIGNING_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "RUBIDIUM_SIGNING_KEYCHAIN_PASS=$KEYCHAIN_PASS" >> "$GITHUB_ENV"
+
+      - name: Verify universal binary
+        run: |
+          chmod +x scripts/verify-macos-bundle-dylibs.sh
+          EXE_NAME=$(plutil -extract CFBundleExecutable raw build/install/release/bin/Rubidium.app/Contents/Info.plist)
+          echo "CFBundleExecutable=$EXE_NAME"
+          [ "$EXE_NAME" = "Rubidium" ] || { echo "::error::bad CFBundleExecutable"; exit 1; }
+          test -x build/install/release/bin/Rubidium.app/Contents/MacOS/Rubidium
+          bash scripts/verify-macos-bundle-dylibs.sh build/install/release/bin/Rubidium.app
+          test -f build/install/release/bin/Rubidium.app/Contents/Resources/fonts/Inter/Inter-Regular.ttf
+          codesign --verify --deep build/install/release/bin/Rubidium.app
+
+      - name: Build DMG
+        timeout-minutes: 45
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          RUBIDIUM_NOTARIZE_MACOS: ${{ github.event_name == 'push' || inputs.notarize }}
+          CODESIGN_BUNDLE_TIMEOUT_SEC: "900"
+        run: |
+          set -euo pipefail
+          VERSION=$(tr -d ' \r\n' < VERSION)
+          PKG_DIR="build/install/release/pkg"
+          DMG="$PKG_DIR/Rubidium-${VERSION}-macos-universal.dmg"
+          mkdir -p "$PKG_DIR"
+          if [ -n "${APPLE_DEVELOPER_ID_APPLICATION:-}" ]
+          then
+            # GHA runners block read-write hdiutil attach. Install, Developer ID
+            # sign, then create the DMG from a folder (no mount).
+            INSTALL_PREFIX="${GITHUB_WORKSPACE}/build/cmake-install"
+            rm -rf "$INSTALL_PREFIX"
+            RUBIDIUM_SKIP_INSTALL_ADHOC_CODESIGN=1 \
+              cmake --install build --config Release --prefix "$INSTALL_PREFIX"
+            chmod +x scripts/fix-macos-bundle-loads.sh \
+              scripts/codesign-with-timeout.sh \
+              scripts/sign-macos-app.sh scripts/create-macos-dmg.sh
+            bash scripts/fix-macos-bundle-loads.sh \
+              "$INSTALL_PREFIX/Rubidium.app/Contents/MacOS/Rubidium"
+            bash scripts/sign-macos-app.sh \
+              "$INSTALL_PREFIX/Rubidium.app" "$APPLE_DEVELOPER_ID_APPLICATION" \
+              "${RUBIDIUM_SIGNING_KEYCHAIN:-}"
+            bash scripts/create-macos-dmg.sh \
+              "$INSTALL_PREFIX/Rubidium.app" "$DMG" "Rubidium ${VERSION}"
+          else
+            (cd build && cpack -G DragNDrop -C Release)
+          fi
+
+      - name: Sign DMG (Developer ID)
+        timeout-minutes: 15
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          RUBIDIUM_NOTARIZE_MACOS: ${{ github.event_name == 'push' || inputs.notarize }}
+          CODESIGN_TIMEOUT_SEC: "600"
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_DEVELOPER_ID_APPLICATION:-}" ]
+          then
+            echo "Apple signing identity not configured — skipping DMG signing."
+            exit 0
+          fi
+          DMG=$(ls build/install/release/pkg/Rubidium-*.dmg)
+          chmod +x scripts/codesign-with-timeout.sh
+          _keychain_args=()
+          if [ -n "${RUBIDIUM_SIGNING_KEYCHAIN:-}" ]
+          then
+            _keychain_args=(--keychain "$RUBIDIUM_SIGNING_KEYCHAIN")
+          fi
+          _timestamp_args=()
+          if [ "${RUBIDIUM_NOTARIZE_MACOS}" = "true" ]
+          then
+            _timestamp_args=(--timestamp)
+          fi
+          _codesign_args=(codesign --force)
+          if [ "${#_timestamp_args[@]}" -gt 0 ]
+          then
+            _codesign_args+=("${_timestamp_args[@]}")
+          fi
+          if [ "${#_keychain_args[@]}" -gt 0 ]
+          then
+            _codesign_args+=("${_keychain_args[@]}")
+          fi
+          _codesign_args+=(--sign "$APPLE_DEVELOPER_ID_APPLICATION" "$DMG")
+          bash scripts/codesign-with-timeout.sh "${CODESIGN_TIMEOUT_SEC}" \
+            "${_codesign_args[@]}"
+          codesign --verify --verbose=2 "$DMG"
+
+      - name: Notarize DMG and staple
+        if: >-
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.notarize == true)
+        timeout-minutes: 60
+        env:
+          APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64 }}
+          APPLE_NOTARY_APPLE_ID: ${{ secrets.APPLE_NOTARY_APPLE_ID }}
+          APPLE_NOTARY_APP_PASSWORD: ${{ secrets.APPLE_NOTARY_APP_PASSWORD }}
+          APPLE_NOTARY_TEAM_ID: ${{ secrets.APPLE_NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_DEVELOPER_ID_APP_CERT_P12_BASE64:-}" ] \
+            || [ -z "${APPLE_NOTARY_APPLE_ID:-}" ] \
+            || [ -z "${APPLE_NOTARY_APP_PASSWORD:-}" ] \
+            || [ -z "${APPLE_NOTARY_TEAM_ID:-}" ]
+          then
+            echo "Apple notarization secrets not fully configured — skipping."
+            exit 0
+          fi
+          DMG=$(ls build/install/release/pkg/Rubidium-*.dmg)
+          SUBMIT_JSON="$(mktemp)"
+          trap 'rm -f "$SUBMIT_JSON"' EXIT
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_NOTARY_APPLE_ID" \
+            --password "$APPLE_NOTARY_APP_PASSWORD" \
+            --team-id "$APPLE_NOTARY_TEAM_ID" \
+            --wait \
+            --output-format json > "$SUBMIT_JSON"
+          SUBMISSION_ID="$(python3 -c "import json; print(json.load(open('$SUBMIT_JSON'))['id'])")"
+          STATUS="$(python3 -c "import json; print(json.load(open('$SUBMIT_JSON'))['status'])")"
+          echo "Notarization status: $STATUS (id: $SUBMISSION_ID)"
+          if [ "$STATUS" != "Accepted" ]
+          then
+            echo "::error::Notarization rejected — Apple log:"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_NOTARY_APPLE_ID" \
+              --password "$APPLE_NOTARY_APP_PASSWORD" \
+              --team-id "$APPLE_NOTARY_TEAM_ID"
+            exit 1
+          fi
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+      - name: Zip signed Rubidium.app for artifact upload
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+        run: |
+          set -euo pipefail
+          APP="build/install/release/bin/Rubidium.app"
+          if [ -n "${APPLE_DEVELOPER_ID_APPLICATION:-}" ]
+          then
+            rm -rf "$APP"
+            ditto "${GITHUB_WORKSPACE}/build/cmake-install/Rubidium.app" "$APP"
+          fi
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" \
+            build/install/release/bin/Rubidium-macos-universal.zip
+          plutil -p "$APP/Contents/Info.plist" | grep CFBundleExecutable
+          test -x "$APP/Contents/MacOS/Rubidium"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rubidium-macos-universal
+          path: build/install/release/bin/Rubidium-macos-universal.zip
+          retention-days: 7
+
+      - name: Verify DMG layout and universal binary
+        run: |
+          set -e
+          DMG=$(ls build/install/release/pkg/Rubidium-*.dmg)
+          MOUNT=/tmp/rubidium-dmg-verify
+          mkdir -p "$MOUNT"
+          hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT" "$DMG"
+          cleanup() { hdiutil detach "$MOUNT" -quiet || true; }
+          trap cleanup EXIT
+          echo "DMG root:"
+          ls -la "$MOUNT"
+          if [ -d "$MOUNT/bin" ]; then
+            echo "::error::DMG must not ship a loose bin/ folder (runtime libs belong inside Rubidium.app)"
+            exit 1
+          fi
+          BIN="$MOUNT/Rubidium.app/Contents/MacOS/Rubidium"
+          [ -f "$BIN" ] || { echo "::error::Rubidium.app missing executable"; exit 1; }
+          [ -x "$BIN" ] || { echo "::error::Rubidium binary not executable"; exit 1; }
+          EXE_NAME=$(plutil -extract CFBundleExecutable raw "$MOUNT/Rubidium.app/Contents/Info.plist")
+          if [ "$EXE_NAME" != "Rubidium" ]; then
+            echo "::error::CFBundleExecutable is '$EXE_NAME' (expected Rubidium)"
+            exit 1
+          fi
+          ARCHS="$(lipo -info "$BIN")"
+          echo "$ARCHS"
+          echo "$ARCHS" | grep -q arm64
+          echo "$ARCHS" | grep -q x86_64
+          chmod +x scripts/verify-macos-bundle-dylibs.sh
+          bash scripts/verify-macos-bundle-dylibs.sh "$MOUNT/Rubidium.app"
+          test -f "$MOUNT/Rubidium.app/Contents/Resources/fonts/Inter/Inter-Regular.ttf" \
+            || { echo "::error::DMG Rubidium.app missing Contents/Resources/fonts"; exit 1; }
+
+          # Developer ID signing runs before DMG creation; ad-hoc only when
+          # signing secrets are not configured.
+          codesign --verify --verbose=2 "$MOUNT/Rubidium.app" \
+            || echo "::warning::codesign verify on DMG mount failed"
+
+          # Launch from the DMG-mounted .app (what users install), not only the build tree.
+          # Non-fatal: the paravirtual GPU on GHA runners lacks Metal argument
+          # buffer support, so Filament will panic after renderer init.
+          DMG_BIN="$MOUNT/Rubidium.app/Contents/MacOS/Rubidium"
+          chmod +x scripts/smoke-macos-launch.sh
+          bash scripts/smoke-macos-launch.sh "$DMG_BIN" 15 || echo "::warning::DMG smoke launch failed (expected on paravirtual GPU)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-macos-universal-dmg
+          path: build/install/release/pkg/Rubidium-*.dmg
+          retention-days: 7
+
+      # Non-gating smoke test: verify .app bundle structure and that the
+      # binary reaches Sneeze paths init before we kill it. Renderer init
+      # depends on GPU availability on the runner and is not required to
+      # pass — the marker below is the last log line before halogen /
+      # Filament Metal kicks in, which can panic on the macos-14 runner's
+      # Apple Paravirtual GPU.
+      - name: Smoke test Rubidium.app
+        continue-on-error: true
+        run: |
+          set -e
+          APP=build/install/release/bin/Rubidium.app
+          BIN=$APP/Contents/MacOS/Rubidium
+          [ -f "$BIN" ] || { echo "::error::Rubidium binary missing at $BIN"; exit 1; }
+          [ -f "$APP/Contents/Resources/fonts/Inter/Inter-Regular.ttf" ] \
+            || { echo "::error::Rubidium.app missing Contents/Resources/fonts"; exit 1; }
+          [ -f "$APP/Contents/Info.plist" ] || { echo "::error::Info.plist missing"; exit 1; }
+          [ -f "$APP/Contents/Resources/AppIcon.icns" ] || echo "::warning::AppIcon.icns missing"
+          echo "Bundle structure ok"
+          ls -l "$APP/Contents"
+
+          # Dylib resolution check — surface missing framework deps up front.
+          otool -L "$BIN" | head -40
+
+          # MoltenVK + ICD JSON live inside the .app bundle now; the C++
+          # shell points the Vulkan loader at them before SDL_Init, so no
+          # env-var setup is needed here.
+
+          chmod +x scripts/smoke-macos-launch.sh
+          bash scripts/smoke-macos-launch.sh "$BIN" 15
+
+      - name: Cleanup signing keychain
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -n "${RUBIDIUM_SIGNING_KEYCHAIN:-}" ] && [ -f "${RUBIDIUM_SIGNING_KEYCHAIN}" ]
+          then
+            security delete-keychain "${RUBIDIUM_SIGNING_KEYCHAIN}" || true
+          fi
+
+  # ---------------------------------------------------------------------------
+  # iOS arm64 (disabled temporarily)
+  # ---------------------------------------------------------------------------
+
+  ios:
+    if: false
+    needs: [find-sneeze, sdl3]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Sneeze
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          ref: ${{ needs.find-sneeze.outputs.branch }}
+          path: Sneeze
+          token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download Sneeze libs
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: ios-libs
+          path: sneeze-libs
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download SDL3
+        uses: actions/download-artifact@v4
+        with:
+          name: sdl3-ios
+          path: sdl3-install
+
+      - name: Download host glslang
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: macos-glslang
+          path: host-glslang
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Arrange Sneeze libs
+        run: |
+          rm -rf Sneeze/libs-ios
+          if [ -d sneeze-libs/libs-ios ]; then
+            mv sneeze-libs/libs-ios Sneeze/libs-ios
+          else
+            mkdir -p Sneeze
+            mv sneeze-libs Sneeze/libs-ios
+          fi
+          rm -rf sneeze-libs
+          find Sneeze/libs-ios -path '*/install/bin/*' -type f -exec chmod +x {} +
+          HOST_GLSLANG=$(find host-glslang -path '*/install/bin/glslang' -type f -print -quit)
+          if [ -n "$HOST_GLSLANG" ]; then
+            mkdir -p Sneeze/libs-ios/glslang/install/bin
+            mv "$HOST_GLSLANG" Sneeze/libs-ios/glslang/install/bin/glslang
+            chmod +x Sneeze/libs-ios/glslang/install/bin/glslang
+          fi
+          rm -rf host-glslang
+          echo "Sneeze libs:" && ls Sneeze/libs-ios/
+
+      - name: Build Rubidium
+        run: |
+          cmake -S src -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DSNEEZE_DIR=${{ github.workspace }}/Sneeze \
+            -DLIBS_DIR=${{ github.workspace }}/Sneeze/libs-ios \
+            -DSDL3_ROOT=${{ github.workspace }}/sdl3-install
+          cmake --build build --parallel $(sysctl -n hw.ncpu)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-ios-arm64
+          path: build/install/release/bin/Rubidium.app
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Android arm64 (disabled temporarily)
+  # ---------------------------------------------------------------------------
+
+  android:
+    if: false
+    needs: [find-sneeze, sdl3]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/local/lib/android \
+            /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+            /opt/hostedtoolcache/go /usr/share/swift 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h /
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - name: Checkout Sneeze
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          ref: ${{ needs.find-sneeze.outputs.branch }}
+          path: Sneeze
+          token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download Sneeze libs
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: android-libs
+          path: sneeze-libs
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download SDL3
+        uses: actions/download-artifact@v4
+        with:
+          name: sdl3-android
+          path: sdl3-install
+
+      - name: Download host glslang
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: linux-glslang
+          path: host-glslang
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Arrange Sneeze libs
+        run: |
+          rm -rf Sneeze/libs-android
+          if [ -d sneeze-libs/libs-android ]; then
+            mv sneeze-libs/libs-android Sneeze/libs-android
+          else
+            mkdir -p Sneeze
+            mv sneeze-libs Sneeze/libs-android
+          fi
+          rm -rf sneeze-libs
+          find Sneeze/libs-android -path '*/install/bin/*' -type f -exec chmod +x {} +
+          HOST_GLSLANG=$(find host-glslang -path '*/install/bin/glslang' -type f -print -quit)
+          if [ -n "$HOST_GLSLANG" ]; then
+            mkdir -p Sneeze/libs-android/glslang/install/bin
+            mv "$HOST_GLSLANG" Sneeze/libs-android/glslang/install/bin/glslang
+            chmod +x Sneeze/libs-android/glslang/install/bin/glslang
+          fi
+          rm -rf host-glslang
+          echo "Sneeze libs:" && ls Sneeze/libs-android/
+
+      - name: Build Rubidium
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          cmake -S src -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DRUBIDIUM_PLATFORM=android-arm64 \
+            -DSNEEZE_ENABLE_XR=OFF \
+            -DSNEEZE_DIR=${{ github.workspace }}/Sneeze \
+            -DLIBS_DIR=${{ github.workspace }}/Sneeze/libs-android \
+            -DSDL3_ROOT=${{ github.workspace }}/sdl3-install
+          cmake --build build --parallel $(nproc)
+
+      - name: Stage runtime .so bundle for APK
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          # Gather everything the APK needs to load at runtime into one dir.
+          # CMAKE_LIBRARY_OUTPUT_DIRECTORY in src/CMakeLists.txt routes the
+          # Rubidium target to build/install/<config>/bin/ rather than the
+          # default build-dir root.
+          mkdir -p build/runtime-libs
+          cp build/install/release/bin/libRubidium.so build/runtime-libs/libmain.so
+          cp sdl3-install/lib/libSDL3.so build/runtime-libs/
+          cp Sneeze/libs-android/Wasmtime/install/lib/libwasmtime.so build/runtime-libs/
+          # libanari.so is the ANARI core; libanari_library_halogen.so dlopens
+          # it at runtime. Without it the APK installs but the activity dies at
+          # startup with: dlopen failed: library "libanari.so" not found.
+          cp Sneeze/libs-android/ANARI-SDK/install/lib/libanari.so build/runtime-libs/
+          cp Sneeze/libs-android/Halogen/install/lib/libanari_library_halogen.so build/runtime-libs/
+          # ANDROID_STL=c++_shared (default for our CMake toolchain) — ship the
+          # libc++ runtime from the NDK so the loader finds it; libRubidium.so
+          # imports __cxa_* / std::* symbols out of it.
+          LIBCXX_SO=$(find "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt" \
+             -path "*/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+             | head -1)
+          cp "$LIBCXX_SO" build/runtime-libs/
+          ls -la build/runtime-libs/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-android-arm64
+          path: build/runtime-libs/*.so
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Meta Quest (Android arm64 + OpenXR VR) — disabled temporarily
+  # Same Sneeze android artifacts, Quest-specific manifest
+  # ---------------------------------------------------------------------------
+
+  quest:
+    if: false
+    needs: [find-sneeze, sdl3]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost \
+            /opt/hostedtoolcache/CodeQL /usr/local/lib/android \
+            /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+            /opt/hostedtoolcache/go /usr/share/swift 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h /
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - name: Checkout Sneeze
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          ref: ${{ needs.find-sneeze.outputs.branch }}
+          path: Sneeze
+          token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download Sneeze libs
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: android-libs
+          path: sneeze-libs
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Download SDL3
+        # Reuse the android sdl3 artifact — see note in the sdl3: matrix.
+        uses: actions/download-artifact@v4
+        with:
+          name: sdl3-android
+          path: sdl3-install
+
+      - name: Download host glslang
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ env.SNEEZE_REPO }}
+          run-id: ${{ needs.find-sneeze.outputs.run_id }}
+          name: linux-glslang
+          path: host-glslang
+          github-token: ${{ secrets.SNEEZE_TOKEN }}
+
+      - name: Arrange Sneeze libs
+        run: |
+          rm -rf Sneeze/libs-android
+          if [ -d sneeze-libs/libs-android ]; then
+            mv sneeze-libs/libs-android Sneeze/libs-android
+          else
+            mkdir -p Sneeze
+            mv sneeze-libs Sneeze/libs-android
+          fi
+          rm -rf sneeze-libs
+          find Sneeze/libs-android -path '*/install/bin/*' -type f -exec chmod +x {} +
+          HOST_GLSLANG=$(find host-glslang -path '*/install/bin/glslang' -type f -print -quit)
+          if [ -n "$HOST_GLSLANG" ]; then
+            mkdir -p Sneeze/libs-android/glslang/install/bin
+            mv "$HOST_GLSLANG" Sneeze/libs-android/glslang/install/bin/glslang
+            chmod +x Sneeze/libs-android/glslang/install/bin/glslang
+          fi
+          rm -rf host-glslang
+          echo "Sneeze libs:" && ls Sneeze/libs-android/
+
+      - name: Build Rubidium for Quest
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          cmake -S src -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-29 \
+            -DRUBIDIUM_PLATFORM=quest-arm64 \
+            -DSNEEZE_ENABLE_XR=ON \
+            -DSNEEZE_DIR=${{ github.workspace }}/Sneeze \
+            -DLIBS_DIR=${{ github.workspace }}/Sneeze/libs-android \
+            -DSDL3_ROOT=${{ github.workspace }}/sdl3-install
+          cmake --build build --parallel $(nproc)
+
+      - name: Stage runtime .so bundle for APK
+        # SDLActivity's default getLibraries() loads libSDL3.so then libmain.so,
+        # so rename libRubidium.so -> libmain.so to match.
+        # CMAKE_LIBRARY_OUTPUT_DIRECTORY routes to install/<config>/bin/ —
+        # see note in the android job above. Same staging shape as the phone
+        # android job: libanari + libc++_shared must come along or
+        # SDLActivity's dlopen chain fails at startup.
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          mkdir -p build/runtime-libs
+          cp build/install/release/bin/libRubidium.so build/runtime-libs/libmain.so
+          cp sdl3-install/lib/libSDL3.so build/runtime-libs/
+          cp Sneeze/libs-android/Wasmtime/install/lib/libwasmtime.so build/runtime-libs/
+          cp Sneeze/libs-android/ANARI-SDK/install/lib/libanari.so build/runtime-libs/
+          cp Sneeze/libs-android/Halogen/install/lib/libanari_library_halogen.so build/runtime-libs/
+          LIBCXX_SO=$(find "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt" \
+             -path "*/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+             | head -1)
+          cp "$LIBCXX_SO" build/runtime-libs/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-quest
+          path: |
+            build/runtime-libs/*.so
+            pkg/android/AndroidManifest-quest.xml
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # APK packaging — disabled temporarily (needs android job)
+  # ---------------------------------------------------------------------------
+
+  apk-android:
+    if: false
+    needs: android
+    runs-on: ubuntu-22.04
+    env:
+      MIN_SDK: "26"
+      TARGET_SDK: "34"
+      BUILD_TOOLS: "34.0.0"
+      SDL3_TAG: release-3.2.12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK build-tools + platform
+        # SDL3's Java references VibratorManager (API 31) and Insets (API 29)
+        # so javac needs the android-${TARGET_SDK} jar for compilation even
+        # though runtime min-sdk is lower.
+        run: |
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -sSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip && rm tools.zip
+          mv cmdline-tools latest
+          yes 2>/dev/null | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" \
+            "build-tools;${{ env.BUILD_TOOLS }}" "platforms;android-${{ env.TARGET_SDK }}"
+          echo "ANDROID_SDK=$HOME/android-sdk" >> "$GITHUB_ENV"
+
+      - name: Download Rubidium native libs
+        uses: actions/download-artifact@v4
+        with:
+          name: rubidium-android-arm64
+          path: native
+
+      - name: Clone SDL3 for Java sources
+        uses: actions/checkout@v4
+        with:
+          repository: libsdl-org/SDL
+          ref: ${{ env.SDL3_TAG }}
+          path: SDL
+
+      - name: Package APK
+        run: |
+          SDK="$ANDROID_SDK"
+          BT="$SDK/build-tools/${{ env.BUILD_TOOLS }}"
+          PLATFORM_JAR="$SDK/platforms/android-${{ env.TARGET_SDK }}/android.jar"
+          VERSION=$(cat VERSION)
+
+          mkdir -p stage/lib/arm64-v8a stage/classes
+
+          # 1. Compile SDL3 Java activity → DEX
+          # Compile SDL3's Activity + Rubidium's MainActivity. pkg/android/java
+          # was getting skipped previously, which produced an APK whose
+          # classes.dex lacked com.rp1.Rubidium.MainActivity — Android then
+          # killed the process at launch with ClassNotFoundException.
+          { find SDL/android-project/app/src/main/java -name '*.java'
+            find pkg/android/java                       -name '*.java'
+          } | xargs javac -source 1.8 -target 1.8 -cp "$PLATFORM_JAR" -d stage/classes
+          "$BT/d8" --lib "$PLATFORM_JAR" --output stage \
+            $(find stage/classes -name '*.class')
+
+          # 2. Compile + link resources (app icon etc.)
+          "$BT/aapt2" compile --dir pkg/android/res -o stage/res.zip
+          "$BT/aapt2" link -o stage/unaligned.apk \
+            -I "$PLATFORM_JAR" \
+            --manifest pkg/android/AndroidManifest.xml \
+            --min-sdk-version ${{ env.MIN_SDK }} \
+            --target-sdk-version ${{ env.TARGET_SDK }} \
+            --version-code 1 \
+            --version-name "$VERSION" \
+            stage/res.zip
+
+          # 3. Stage native libs
+          cp native/*.so stage/lib/arm64-v8a/
+          ls -la stage/lib/arm64-v8a/
+
+          # 4. Add DEX + lib/ into APK zip
+          (cd stage && zip -u unaligned.apk classes.dex && zip -ur unaligned.apk lib/)
+
+          # 5. Align + sign with debug keystore
+          "$BT/zipalign" -f 4 stage/unaligned.apk stage/aligned.apk
+          keytool -genkeypair -keystore stage/debug.keystore -alias key \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Rubidium Debug,O=Metaversal,C=US" 2>/dev/null
+          "$BT/apksigner" sign \
+            --ks stage/debug.keystore --ks-key-alias key \
+            --ks-pass pass:android --key-pass pass:android \
+            --out rubidium-android-arm64.apk stage/aligned.apk
+
+          ls -la rubidium-android-arm64.apk
+          "$BT/apksigner" verify rubidium-android-arm64.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-android-apk
+          path: rubidium-android-arm64.apk
+          retention-days: 7
+
+  apk-quest:
+    if: false
+    needs: quest
+    runs-on: ubuntu-22.04
+    env:
+      MIN_SDK: "29"
+      TARGET_SDK: "34"
+      BUILD_TOOLS: "34.0.0"
+      SDL3_TAG: release-3.2.12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK build-tools + platform
+        # SDL3's Java references VibratorManager (API 31) and Insets (API 29)
+        # so javac needs the android-${TARGET_SDK} jar for compilation even
+        # though runtime min-sdk is lower.
+        run: |
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          curl -sSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q tools.zip && rm tools.zip
+          mv cmdline-tools latest
+          yes 2>/dev/null | "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager" \
+            "build-tools;${{ env.BUILD_TOOLS }}" "platforms;android-${{ env.TARGET_SDK }}"
+          echo "ANDROID_SDK=$HOME/android-sdk" >> "$GITHUB_ENV"
+
+      - name: Download Rubidium Quest native libs
+        uses: actions/download-artifact@v4
+        with:
+          name: rubidium-quest
+          path: quest
+
+      - name: Clone SDL3 for Java sources
+        uses: actions/checkout@v4
+        with:
+          repository: libsdl-org/SDL
+          ref: ${{ env.SDL3_TAG }}
+          path: SDL
+
+      - name: Package Quest APK
+        run: |
+          SDK="$ANDROID_SDK"
+          BT="$SDK/build-tools/${{ env.BUILD_TOOLS }}"
+          PLATFORM_JAR="$SDK/platforms/android-${{ env.TARGET_SDK }}/android.jar"
+          VERSION=$(cat VERSION)
+
+          mkdir -p stage/lib/arm64-v8a stage/classes
+
+          # Compile SDL3's Activity + Rubidium's MainActivity. pkg/android/java
+          # was getting skipped previously, which produced an APK whose
+          # classes.dex lacked com.rp1.Rubidium.MainActivity — Android then
+          # killed the process at launch with ClassNotFoundException.
+          { find SDL/android-project/app/src/main/java -name '*.java'
+            find pkg/android/java                       -name '*.java'
+          } | xargs javac -source 1.8 -target 1.8 -cp "$PLATFORM_JAR" -d stage/classes
+          "$BT/d8" --lib "$PLATFORM_JAR" --output stage \
+            $(find stage/classes -name '*.class')
+
+          "$BT/aapt2" compile --dir pkg/android/res -o stage/res.zip
+          "$BT/aapt2" link -o stage/unaligned.apk \
+            -I "$PLATFORM_JAR" \
+            --manifest pkg/android/AndroidManifest-quest.xml \
+            --min-sdk-version ${{ env.MIN_SDK }} \
+            --target-sdk-version ${{ env.TARGET_SDK }} \
+            --version-code 1 \
+            --version-name "$VERSION" \
+            stage/res.zip
+
+          find quest -name '*.so' -exec cp {} stage/lib/arm64-v8a/ \;
+          ls -la stage/lib/arm64-v8a/
+
+          (cd stage && zip -u unaligned.apk classes.dex && zip -ur unaligned.apk lib/)
+
+          "$BT/zipalign" -f 4 stage/unaligned.apk stage/aligned.apk
+          keytool -genkeypair -keystore stage/debug.keystore -alias key \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Rubidium Debug,O=Metaversal,C=US" 2>/dev/null
+          "$BT/apksigner" sign \
+            --ks stage/debug.keystore --ks-key-alias key \
+            --ks-pass pass:android --key-pass pass:android \
+            --out rubidium-quest.apk stage/aligned.apk
+
+          "$BT/apksigner" verify rubidium-quest.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rubidium-quest-apk
+          path: rubidium-quest.apk
+          retention-days: 7

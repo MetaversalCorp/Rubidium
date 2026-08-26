@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="pkg">
+      <UniqueIdentifier>{C5D6E7F8-0001-0000-0000-000000000010}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <!-- Source files (.cpp) -->
+  <ItemGroup>
+    <ClCompile Include="..\pkg\RubidiumSetup.cpp">
+      <Filter>pkg</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <!-- Resource files -->
+  <ItemGroup>
+    <ResourceCompile Include="$(IntDir)setup.rc">
+      <Filter>pkg</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <!-- Template / reference files -->
+  <ItemGroup>
+    <None Include="..\pkg\setup.rc.in">
+      <Filter>pkg</Filter>
+    </None>
+  </ItemGroup>
+</Project>

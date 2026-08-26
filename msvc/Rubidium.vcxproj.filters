@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\shell">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\canvas">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\updater">
+      <UniqueIdentifier>{E8D3A710-5E12-4a30-BF05-F4B2D7A93C44}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\logger">
+      <UniqueIdentifier>{B8A53B08-D142-4f4e-8B6E-C5C3F9B1A3D5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector">
+      <UniqueIdentifier>{C9D64A19-E253-4f5f-9C7F-D6D4FA2B4E6A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\elements">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5001}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\console">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5002}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\sources">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5003}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\network">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD7G-E7E5FB3C5F7B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\preview3d">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD7I-E7E5FB3C5F9D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\common">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD7H-E7E5FB3C5F8C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\performance">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5004}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\memory">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5005}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\storage">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5006}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\inspector\security">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5007}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\rmlui_sdl">
+      <UniqueIdentifier>{EA186C3B-F475-4171-AE8H-F8F6FC4D6G8C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\settings_ui">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5008}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\release_notes">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C5009}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\cli">
+      <UniqueIdentifier>{DA075B2A-F364-4060-AD70-E7E5FB3C500A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="pkg">
+      <UniqueIdentifier>{F1A2B3C4-0001-0000-0000-000000000010}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="scripts">
+      <UniqueIdentifier>{F1A2B3C4-0001-0000-0000-000000000011}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="deps">
+      <UniqueIdentifier>{F1A2B3C4-0001-0000-0000-000000000012}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <!-- Source files (.cpp) -->
+  <ItemGroup>
+    <ClCompile Include="..\src\pch.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\main_Win32.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\App_Win32.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\AppFrame.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\AppFrame_Win32.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\WinUtils.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\canvas\Canvas.cpp">
+      <Filter>src\canvas</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\updater\Updater.cpp">
+      <Filter>src\updater</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\updater\UpdaterWnd.cpp">
+      <Filter>src\updater</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\logger\Logger.cpp">
+      <Filter>src\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\logger\ILogger.cpp">
+      <Filter>src\logger</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\preview3d\Preview3D.cpp">
+      <Filter>src\inspector\preview3d</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\InspectorRml.cpp">
+      <Filter>src\inspector</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\settings_ui\SettingsRml.cpp">
+      <Filter>src\settings_ui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\release_notes\Markdown.cpp">
+      <Filter>src\release_notes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\release_notes\ReleaseNotesRml.cpp">
+      <Filter>src\release_notes</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cli\MsfCli.cpp">
+      <Filter>src\cli</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\common\Button.cpp">
+      <Filter>src\inspector\common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Frame.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Toolbar.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Statusbar.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Waterfall.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Body.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Containers.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Files.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Details.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Headers.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Preview.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Response.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\network\Network_Detail_Timing.cpp">
+      <Filter>src\inspector\network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Frame.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Containers.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Tree.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Details.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Detail_Computed.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Detail_Details.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\elements\Elements_Detail_Events.cpp">
+      <Filter>src\inspector\elements</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\console\Console_Frame.cpp">
+      <Filter>src\inspector\console</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\console\Console_Toolbar.cpp">
+      <Filter>src\inspector\console</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\console\Console_Body.cpp">
+      <Filter>src\inspector\console</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\console\Console_Containers.cpp">
+      <Filter>src\inspector\console</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\console\Console_Entries.cpp">
+      <Filter>src\inspector\console</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\sources\Sources_Frame.cpp">
+      <Filter>src\inspector\sources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\performance\Performance_Frame.cpp">
+      <Filter>src\inspector\performance</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\performance\Performance_Toolbar.cpp">
+      <Filter>src\inspector\performance</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\performance\Performance_Metrics.cpp">
+      <Filter>src\inspector\performance</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\performance\Performance_Chart.cpp">
+      <Filter>src\inspector\performance</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\performance\Performance_Log.cpp">
+      <Filter>src\inspector\performance</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\memory\Memory_Frame.cpp">
+      <Filter>src\inspector\memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\storage\Storage_Frame.cpp">
+      <Filter>src\inspector\storage</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\storage\Storage_Containers.cpp">
+      <Filter>src\inspector\storage</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\storage\Storage_Preview.cpp">
+      <Filter>src\inspector\storage</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\security\Security_Frame.cpp">
+      <Filter>src\inspector\security</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\security\Security_Containers.cpp">
+      <Filter>src\inspector\security</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\inspector\security\Security_Preview.cpp">
+      <Filter>src\inspector\security</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\rmlui_sdl\RmlUi_SDL.cpp">
+      <Filter>src\rmlui_sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\rmlui_sdl\RmlUi_SDL_Renderer.cpp">
+      <Filter>src\rmlui_sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\rmlui_sdl\RmlUi_SDL_Platform.cpp">
+      <Filter>src\rmlui_sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\AppFrameTab.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\App.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\Utils.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\AppFrameTab_SDL.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\canvas\Canvas_Win32.cpp">
+      <Filter>src\canvas</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\shell\ChromeRml.cpp">
+      <Filter>src\shell</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <!-- Header files (.h) -->
+  <ItemGroup>
+    <ClInclude Include="..\src\pch.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\resource.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\Native.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\version.h.in">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\App.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame_Win32.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame_SDL.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame_iOS.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame_Mac.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame_Android.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrame_Linux.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\UrlBarRml.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\WinUtils.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\canvas\Canvas.h">
+      <Filter>src\canvas</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\updater\Updater.h">
+      <Filter>src\updater</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\updater\UpdaterWnd.h">
+      <Filter>src\updater</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\updater\UpdaterGeneric.h">
+      <Filter>src\updater</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\logger\Logger.h">
+      <Filter>src\logger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\logger\ILogger.h">
+      <Filter>src\logger</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\InspectorRml.h">
+      <Filter>src\inspector</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\preview3d\Preview3D.h">
+      <Filter>src\inspector\preview3d</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\settings_ui\SettingsRml.h">
+      <Filter>src\settings_ui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\release_notes\Markdown.h">
+      <Filter>src\release_notes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\release_notes\ReleaseNotesRml.h">
+      <Filter>src\release_notes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cli\MsfCli.h">
+      <Filter>src\cli</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\common\Button.h">
+      <Filter>src\inspector\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\common\Collapse.h">
+      <Filter>src\inspector\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\elements\Elements.h">
+      <Filter>src\inspector\elements</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\console\Console.h">
+      <Filter>src\inspector\console</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\sources\Sources.h">
+      <Filter>src\inspector\sources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\network\Network.h">
+      <Filter>src\inspector\network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\performance\Performance.h">
+      <Filter>src\inspector\performance</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\memory\Memory.h">
+      <Filter>src\inspector\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\storage\Storage.h">
+      <Filter>src\inspector\storage</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\inspector\security\Security.h">
+      <Filter>src\inspector\security</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\rmlui_sdl\RmlUi_SDL.h">
+      <Filter>src\rmlui_sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\rmlui_sdl\RmlUi_SDL_Renderer.h">
+      <Filter>src\rmlui_sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\rmlui_sdl\RmlUi_SDL_Platform.h">
+      <Filter>src\rmlui_sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrameTab.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\App_Win32.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\Utils.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\canvas\Canvas_Linux.h">
+      <Filter>src\canvas</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\AppFrameTab_SDL.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\canvas\Canvas_Win32.h">
+      <Filter>src\canvas</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\App_SDL.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\shell\ChromeRml.h">
+      <Filter>src\shell</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <!-- Resource files -->
+  <ItemGroup>
+    <ResourceCompile Include="..\src\rubidium.rc">
+      <Filter>src</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <!-- Non-compiled platform sources (visible in VS, excluded from build) -->
+  <ItemGroup>
+    <None Include="..\src\main_SDL.cpp">
+      <Filter>src</Filter>
+    </None>
+    <None Include="..\src\shell\App_SDL.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\shell\AppFrame_SDL.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\shell\AppFrame_iOS.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\shell\AppFrame_Mac.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\shell\AppFrame_Android.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\shell\AppFrame_Linux.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\canvas\Canvas_Linux.cpp">
+      <Filter>src\canvas</Filter>
+    </None>
+    <None Include="..\src\shell\UrlBarRml.cpp">
+      <Filter>src\shell</Filter>
+    </None>
+    <None Include="..\src\updater\UpdaterGeneric.cpp">
+      <Filter>src\updater</Filter>
+    </None>
+    <None Include="..\src\CMakeLists.txt">
+      <Filter>src</Filter>
+    </None>
+    <None Include="..\src\inspector\InspectorRml_Style.inl">
+      <Filter>src\inspector</Filter>
+    </None>
+    <None Include="..\RELEASE" />
+  </ItemGroup>
+  <!-- Root-level project files -->
+  <ItemGroup>
+    <None Include="..\.gitignore" />
+    <None Include="..\NOTICE" />
+    <None Include="..\README.md" />
+    <None Include="..\VERSION" />
+  </ItemGroup>
+  <!-- pkg/ -->
+  <ItemGroup>
+    <None Include="..\pkg\RubidiumSetup.cpp">
+      <Filter>pkg</Filter>
+    </None>
+    <None Include="..\pkg\generate_manifest.cpp">
+      <Filter>pkg</Filter>
+    </None>
+    <None Include="..\pkg\LICENSE.md">
+      <Filter>pkg</Filter>
+    </None>
+    <None Include="..\pkg\manifest.json">
+      <Filter>pkg</Filter>
+    </None>
+    <None Include="..\pkg\setup.rc.in">
+      <Filter>pkg</Filter>
+    </None>
+    <None Include="..\pkg\signing-metadata.json">
+      <Filter>pkg</Filter>
+    </None>
+  </ItemGroup>
+  <!-- scripts/ -->
+  <ItemGroup>
+    <None Include="..\scripts\build-windows.ps1">
+      <Filter>scripts</Filter>
+    </None>
+    <None Include="..\scripts\build-linux.sh">
+      <Filter>scripts</Filter>
+    </None>
+    <None Include="..\scripts\build-macos.sh">
+      <Filter>scripts</Filter>
+    </None>
+    <None Include="..\scripts\build-deps.sh">
+      <Filter>scripts</Filter>
+    </None>
+    <None Include="..\scripts\ci-windows.ps1">
+      <Filter>scripts</Filter>
+    </None>
+    <None Include="..\scripts\commit-manifest.cmd">
+      <Filter>scripts</Filter>
+    </None>
+  </ItemGroup>
+  <!-- deps/ -->
+  <ItemGroup>
+    <None Include="..\deps\CMakeLists.txt">
+      <Filter>deps</Filter>
+    </None>
+    <None Include="..\deps\sdl3.cmake">
+      <Filter>deps</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\pkg\LICENSE.txt">
+      <Filter>pkg</Filter>
+    </Text>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+# Linux arm64 cross-compilation CI build
+# Build:  docker build -f docker/Dockerfile.linux-arm64 -t rubidium-linux-arm64 .
+# Run:    docker run --rm -v $(pwd)/..:/src rubidium-linux-arm64
+FROM rubidium-base AS linux-arm64
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libc++-dev-arm64-cross libc++abi-dev-arm64-cross \
+    binutils-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Rust cross-compilation target
+RUN rustup target add aarch64-unknown-linux-gnu
+
+COPY scripts/build.sh /build/build.sh
+RUN chmod +x /build/build.sh
+
+ENTRYPOINT ["/build/build.sh", "linux-arm64"]
