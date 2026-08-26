@@ -1,6 +1,6 @@
 # Rubidium — Open Metaverse Browser
 
-Rubidium is the metaverse browser application, developed by the Open Metaverse Browser Initiative (OMBI), a project under the Metaverse Standards Forum. It is the single executable the user runs — analogous to Chromium in the web browser world. Metaversal's private **Artemis** browser is a branded derivative of this repository.
+Rubidium is the metaverse browser application, developed by the Open Metaverse Browser Initiative (OMBI), a project under the Metaverse Standards Forum. It is the single executable the user runs — analogous to Chromium in the web browser world.
 
 Rubidium is a thin application layer built on top of the **Sneeze** engine (the Metaverse Browser Engine). Rubidium owns windowing (via SDL3), the user chrome (URL bar, toolbars, menus), the native application frame, and the `main()` entry point. Sneeze handles rendering (ANARI), sandboxed code execution (Wasmtime), GPU compute (Vox), XR (OpenXR), networking (curl), UI (RmlUi), and cryptographic trust (BoringSSL + jwt-cpp).
 
