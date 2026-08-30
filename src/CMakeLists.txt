@@ -8,8 +8,9 @@ set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT
 # CMake target names, namespace, and file layout stay Rubidium.
 set (RUBIDIUM_BRANDING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../branding")
 include ("${RUBIDIUM_BRANDING_DIR}/Product.cmake")
-set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-   "${RUBIDIUM_BRANDING_DIR}/Product.cmake")
+# Do not also CMAKE_CONFIGURE_DEPENDS this path: CMake 3.22/Ninja already
+# tracks included files, and a second spelling (src/../branding vs branding)
+# produces "multiple rules generate Product.cmake".
 set (RUBIDIUM_CDN_URL "${PRODUCT_CDN_URL}" CACHE STRING
    "CDN base URL for manifest and installers")
 # Command-line -DRUBIDIUM_CDN_URL=... wins via the cache; feed Brand.h from it.
@@ -253,6 +254,9 @@ set (SNEEZE_PLATFORM "${RUBIDIUM_PLATFORM}")
 # Parallel MSBuild can otherwise link those targets before Sneeze.lib is written (LNK1104).
 set (SNEEZE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set (SNEEZE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+if (ANDROID)
+   set (SNEEZE_ENABLE_XR OFF CACHE BOOL "" FORCE)
+endif ()
 
 add_subdirectory ("${SNEEZE_DIR}/src" "${SNEEZE_DIR}/builds/${RUBIDIUM_PLATFORM}/build")
 
@@ -1458,7 +1462,10 @@ include (CPack)
 
 # ---------------------------------------------------------------------------
 # GenerateManifest - build tool for updating pkg/manifest.json after CPack
+# Host-only: find_package(OpenSSL) is for the desktop machine, not the NDK.
 # ---------------------------------------------------------------------------
+
+if (NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 
 add_executable (GenerateManifest EXCLUDE_FROM_ALL
    "${CMAKE_CURRENT_SOURCE_DIR}/../pkg/generate_manifest.cpp"
@@ -1506,3 +1513,5 @@ add_custom_target (package_promote
    COMMENT "Promoting ${PROJECT_VERSION} to stable in pkg/manifest.json"
    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
+
+endif ()

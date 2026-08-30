@@ -24,6 +24,39 @@
 
 #ifdef __ANDROID__
 #include <SDL3/SDL_system.h>
+#include <jni.h>
+#include <fstream>
+#include <mutex>
+#include <vector>
+
+static bool ExtractAndroidAsset (const std::string& sAssetPath, const std::string& sDestPath)
+{
+   bool bResult = false;
+   SDL_IOStream* pIn = SDL_IOFromFile (sAssetPath.c_str (), "rb");
+
+   if (pIn)
+   {
+      const Sint64 nSize = SDL_GetIOSize (pIn);
+
+      if (nSize > 0)
+      {
+         std::vector<char> aBuffer (static_cast<size_t> (nSize));
+
+         if (SDL_ReadIO (pIn, aBuffer.data (), static_cast<size_t> (nSize)) == static_cast<size_t> (nSize))
+         {
+            std::filesystem::create_directories (std::filesystem::path (sDestPath).parent_path ());
+            std::ofstream Out (sDestPath, std::ios::binary);
+
+            if (Out && Out.write (aBuffer.data (), nSize))
+               bResult = true;
+         }
+      }
+
+      SDL_CloseIO (pIn);
+   }
+
+   return bResult;
+}
 #endif
 
 #if defined (__APPLE__)
@@ -131,34 +164,33 @@ void OnAfterSDLInit (LOGGER* pLogger)
 
 #endif
 
-#if 0
 #ifdef __ANDROID__
-#include <jni.h>
-#include <atomic>
-#include <functional>
-#include <string>
-
 namespace
 {
-   // Wired up by APPSDL::Impl::Run () so the Java EditText overlay's submit
-   // callback can deliver text into the active APPFRAME on the main thread.
-   std::atomic<std::function<void(const std::string&)>*> g_pUrlSubmittedFn { nullptr };
+   // Java MainActivity.nativeUrlSubmitted runs on the UI thread. Stash the
+   // URL here and apply it on the SDL loop so DestroyContext/CreateContext
+   // never run against a live compositor from JNI.
+   std::mutex  g_mxPendingUrl;
+   std::string g_sPendingUrl;
+   bool        g_bPendingUrl = false;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_rp1_Rubidium_MainActivity_nativeUrlSubmitted (JNIEnv* env, jclass /*cls*/, jstring jUrl)
 {
-   auto* pFn = g_pUrlSubmittedFn.load ();
-   if (!pFn || !jUrl)
-      return;
-   const char* pszUrl = env->GetStringUTFChars (jUrl, nullptr);
-   if (pszUrl)
+   if (jUrl)
    {
-      (*pFn) (std::string (pszUrl));
-      env->ReleaseStringUTFChars (jUrl, pszUrl);
+      const char* pszUrl = env->GetStringUTFChars (jUrl, nullptr);
+
+      if (pszUrl)
+      {
+         std::lock_guard<std::mutex> lock (g_mxPendingUrl);
+         g_sPendingUrl = pszUrl;
+         g_bPendingUrl = true;
+         env->ReleaseStringUTFChars (jUrl, pszUrl);
+      }
    }
 }
-#endif
 #endif
 
 static std::string GetAppDataDir ()
@@ -256,8 +288,13 @@ public:
 
    bool LoadFonts ()
    {
+#ifdef __ANDROID__
+      const char* pStorage = SDL_GetAndroidInternalStoragePath ();
+      std::string sFontsDir = pStorage ? (std::string (pStorage) + "/fonts/") : std::string ();
+#else
       const char* pBasePath = SDL_GetBasePath ();
       std::string sFontsDir = std::string (pBasePath) + "fonts/";
+#endif
 
       static const char* asFontFiles[] =
       {
@@ -279,15 +316,33 @@ public:
 
       bool bLoaded = true;
 
+#ifdef __ANDROID__
+      if (sFontsDir.empty ())
+         bLoaded = false;
+#endif
+
       for (const char* sFile : asFontFiles)
       {
          std::string sPath = sFontsDir + sFile;
 
+#ifdef __ANDROID__
+         if (bLoaded && !ExtractAndroidAsset (std::string ("fonts/") + sFile, sPath))
+         {
+            bLoaded = false;
+            m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Warning, "App", std::string ("Font asset missing: ") + sFile);
+         }
+         else if (bLoaded && !Rml::LoadFontFace (sPath))
+         {
+            bLoaded = false;
+            m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Warning, "App", std::string ("Font not loaded: ") + sFile);
+         }
+#else
          if (!Rml::LoadFontFace (sPath))
          {
             bLoaded = false;
             m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Warning, "App", std::string ("Font not loaded: ") + sFile);
          }
+#endif
       }
 
       if (bLoaded)
@@ -303,6 +358,25 @@ public:
          bool bInputProcessedThisFrame = false;
 
          SDL_PumpEvents ();
+
+#ifdef __ANDROID__
+         std::string sPendingUrl;
+         bool        bPendingUrl = false;
+
+         {
+            std::lock_guard<std::mutex> lock (g_mxPendingUrl);
+
+            if (g_bPendingUrl)
+            {
+               sPendingUrl   = g_sPendingUrl;
+               g_bPendingUrl = false;
+               bPendingUrl   = true;
+            }
+         }
+
+         if (bPendingUrl  &&  !m_apAppFrame.empty ())
+            static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Chrome_OnUrlSubmit (sPendingUrl);
+#endif
 
          // Defer the "Release Notes" popup until the chrome window has pumped for a
          // few frames. On Linux/X11 a popup created + shown on the very first
@@ -547,34 +621,6 @@ public:
             {
                if (Window_Create (nullptr, SNEEZE::CONTEXT::kSESSION_PERSISTENT))
                {
-#if 0
-#ifdef __ANDROID__
-                  // Android: URL bar is a Java EditText overlay on top of the SDL
-                  // SurfaceView (see MainActivity.java). The RmlUi path can't draw
-                  // on top of Filament's Vulkan swapchain without a Sneeze-side
-                  // overlay pass — see follow-up work.
-                  m_fnUrlSubmitted = [this](const std::string& sUrl) { m_pFrame->UrlText (sUrl); };
-                  g_pUrlSubmittedFn.store (&m_fnUrlSubmitted);
-#else
-                  SDL_Window* pMainWindow = static_cast<SDL_Window*> (m_pFrame->NativeWindow ());
-                  CANVAS* pCanvas = m_pFrame->Canvas ();
-                  SDL_Renderer* pRenderer = pCanvas ? pCanvas->Renderer () : nullptr;
-
-                  m_pUrlBar = new URL_BAR_RML ();
-                  if (pMainWindow && pRenderer &&
-                     m_pUrlBar->Initialize (pMainWindow, pRenderer, nWidth, sHome,
-                        [this](const std::string& sUrl) { m_pFrame->UrlText (sUrl); }))
-                  {
-                     pCanvas->SetOverlay ([this](SDL_Renderer* pR) { m_pUrlBar->Render (pR); });
-                  }
-                  else
-                  {
-                     m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Warning, "App", "Failed to initialize URL bar");
-                     delete m_pUrlBar;
-                     m_pUrlBar = nullptr;
-                  }
-#endif
-#endif
                   if (m_pApp->CreateUpdater (this))
                   {
                      // Defer the "Release Notes" popup into the live EventLoop instead
@@ -588,22 +634,6 @@ public:
                   }
 
                   m_pApp->DestroyUpdater ();
-
-#if 0
-#ifdef __ANDROID__
-                  g_pUrlSubmittedFn.store (nullptr);
-                  m_fnUrlSubmitted = nullptr;
-#else
-                  if (m_pUrlBar)
-                  {
-                     if (CANVAS* pC = m_pFrame->Canvas ())
-                        pC->SetOverlay (nullptr);
-                     m_pUrlBar->Shutdown ();
-                     delete m_pUrlBar;
-                     m_pUrlBar = nullptr;
-                  }
-#endif
-#endif
                }
                else m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "App", "Failed to create application window");
             }

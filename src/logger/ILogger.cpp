@@ -2,6 +2,10 @@
 
 #include "ILogger.h"
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
+
 ILOGGER_NATIVE::ILOGGER_NATIVE (bool bUseStdOut) :
    m_bUseStdOut (bUseStdOut)
 {
@@ -32,10 +36,14 @@ void ILOGGER_NATIVE::onMessage_File (std::string& sLine)
 
 void ILOGGER_NATIVE::onMessage_StdOut (std::string& sLine)
 {
+#ifdef __ANDROID__
+   __android_log_print (ANDROID_LOG_INFO, "Rubidium", "%s", sLine.c_str ());
+#else
    std::printf ("%s\n", sLine.c_str ());
 
 #ifndef RUBIDIUM_PLATFORM_WINDOWS
    fflush (stdout);
+#endif
 #endif
 }
 
