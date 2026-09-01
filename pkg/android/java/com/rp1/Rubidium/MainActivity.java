@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -46,14 +47,18 @@ public class MainActivity extends SDLActivity {
         mUrlBar.setHint ("URL");
 
         if (mImmersive) {
-            // Hidden IME focus target. Horizon's system keyboard overlay is the
-            // visible typing UI in the HMD; this view is never composited there.
+            // 1x1 visible IME target. INVISIBLE / GONE views are skipped by
+            // Horizon's overlay keyboard. Alpha 0 keeps it off the compositor.
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams (1, 1, Gravity.TOP);
             mUrlBar.setLayoutParams (lp);
             mUrlBar.setBackgroundColor (Color.TRANSPARENT);
             mUrlBar.setTextColor (Color.TRANSPARENT);
             mUrlBar.setHintTextColor (Color.TRANSPARENT);
-            mUrlBar.setVisibility (View.INVISIBLE);
+            mUrlBar.setInputType (InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            mUrlBar.setFocusable (true);
+            mUrlBar.setFocusableInTouchMode (true);
+            mUrlBar.setAlpha (0f);
+            mUrlBar.setVisibility (View.VISIBLE);
         } else {
             mUrlBar.setBackgroundColor (Color.argb (235, 240, 240, 240));
             mUrlBar.setTextColor (Color.BLACK);
@@ -106,18 +111,24 @@ public class MainActivity extends SDLActivity {
         });
     }
 
-    // Quest menu / A (and desktop fallback): focus the hidden EditText so Horizon
-    // shows the system keyboard overlay.
+    // Quest menu / A / trigger-on-URL: focus the IME target so Horizon shows
+    // the overlay keyboard.
     public void requestUrlKeyboard () {
         runOnUiThread (() -> {
             if (mUrlBar == null) {
                 return;
             }
-            mUrlBar.setVisibility (mImmersive ? View.INVISIBLE : View.VISIBLE);
+            mUrlBar.setVisibility (View.VISIBLE);
+            mUrlBar.setAlpha (mImmersive ? 0f : 1f);
             mUrlBar.requestFocus ();
+            mUrlBar.setSelection (mUrlBar.getText ().length ());
             InputMethodManager imm = (InputMethodManager) getSystemService (Context.INPUT_METHOD_SERVICE);
             if (imm != null) {
                 imm.showSoftInput (mUrlBar, InputMethodManager.SHOW_FORCED);
+                mUrlBar.postDelayed (() -> {
+                    mUrlBar.requestFocus ();
+                    imm.showSoftInput (mUrlBar, InputMethodManager.SHOW_FORCED);
+                }, 150);
             }
         });
     }

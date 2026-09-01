@@ -1,8 +1,7 @@
 // Copyright 2026 Metaversal Corporation. All rights reserved.
 //
-// Head-locked Quest URL bar: the same RmlUi #urlbar chrome, rendered offscreen
-// and uploaded into the OpenXR quad swapchain. Horizon's system keyboard is
-// summoned via the hidden MainActivity EditText, not this window.
+// Head-locked Quest URL bar: CPU-drawn into the OpenXR quad swapchain.
+// Horizon's system keyboard is summoned via a 1x1 MainActivity EditText.
 
 #ifndef RUBIDIUM_SHELL_CHROMEXR_H
 #define RUBIDIUM_SHELL_CHROMEXR_H

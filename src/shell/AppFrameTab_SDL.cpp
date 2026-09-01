@@ -336,41 +336,51 @@ void APPFRAMETAB_SDL::Title (const std::string& sTitle) { m_sTitle = sTitle; }
 
 void APPFRAMETAB_SDL::Url (const std::string& sUrl)
 {
-   bool bActive = m_bActive;
-
    m_sUrl = sUrl;
-
-   DestroyContext ();
 
    if (m_pInspectorRml)
       m_pInspectorRml->Reset ();
 
-   if (CreateContext ())
+   if (m_pViewport)
+      m_pViewport->Navigate (sUrl);
+   else
    {
-      if (bActive)
-         ViewportAttach ();
+      bool bActive = m_bActive;
+
+      DestroyContext ();
+
+      if (CreateContext ())
+      {
+         if (bActive)
+            ViewportAttach ();
+      }
    }
 }
 
 void APPFRAMETAB_SDL::Reload (bool bReset)
 {
-   bool bActive = m_bActive;
-
-   DestroyContext ();
-
-   if (m_pInspectorRml)
-      m_pInspectorRml->Reset ();
-
-   if (CreateContext (bReset))
+   if (m_pViewport  &&  !bReset)
    {
-      if (bActive)
-         ViewportAttach ();
+      if (m_pInspectorRml)
+         m_pInspectorRml->Reset ();
+      m_pViewport->Navigate (m_sUrl);
+   }
+   else
+   {
+      bool bActive = m_bActive;
 
-      // Activate rebuilds the renderer from scratch, which comes up with the
-      // default backdrop. Re-assert the scene's stored colour so the
-      // consume-once changed flag trips again and the compositor pushes it to
-      // the new renderer (same pattern as PREVIEW3D::Show).
-      if (m_pContext  &&  m_pContext->Scene ())
-         m_pContext->Scene ()->Background (m_pContext->Scene ()->Background ());
+      DestroyContext ();
+
+      if (m_pInspectorRml)
+         m_pInspectorRml->Reset ();
+
+      if (CreateContext (bReset))
+      {
+         if (bActive)
+            ViewportAttach ();
+
+         if (m_pContext  &&  m_pContext->Scene ())
+            m_pContext->Scene ()->Background (m_pContext->Scene ()->Background ());
+      }
    }
 }
