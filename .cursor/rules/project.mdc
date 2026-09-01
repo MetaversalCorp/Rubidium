@@ -398,6 +398,21 @@ builds\windows-x64\install\release\bin\Rubidium.exe
 ./builds/linux-x64/install/release/bin/Rubidium # Run
 ```
 
+```powershell
+# --- Android phone (android-arm64, XR off, min SDK 26) ---
+.\scripts\build-android.ps1 -All
+.\scripts\build-android.ps1                    # incremental after the tree exists
+
+# --- Quest 3 (quest-arm64, XR on, min SDK 29, immersive OpenXR) ---
+.\scripts\build-android.ps1 -Quest -All
+.\scripts\build-android.ps1 -Quest
+# Sideload (debug keystore is regenerated each pack — uninstall first):
+adb uninstall com.rp1.Rubidium
+adb install builds\quest-arm64\install\release\pkg\rubidium-<ver>-quest-arm64-signed.apk
+```
+
+Phone and Quest are separate CMake trees. Do not FORCE `SNEEZE_ENABLE_XR` off on Android in CMake; the scripts pass OFF (phone) or ON (Quest). Quest does not create an SDL window — OpenXR owns presentation. GitHub `quest` / `apk-quest` jobs stay disabled until a donned-headset sideload is the normal path.
+
 ### CI / CD
 
 Rubidium uses a split CI strategy:

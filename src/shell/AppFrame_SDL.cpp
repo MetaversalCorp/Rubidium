@@ -10,6 +10,10 @@
 #include "version.h"
 #include "Brand.h"
 
+#ifdef __ANDROID__
+#include "shell/ChromeXr.h"
+#endif
+
 using namespace RUBIDIUM;
 
 APPFRAME_SDL::APPFRAME_SDL (IAPPWINDOW* pController, SNEEZE::ENGINE* pSneeze, LOGGER* pLogger) :
@@ -56,6 +60,16 @@ bool APPFRAME_SDL::Initialize (int nWidth, int nHeight, const char* sTitle, SNEE
       m_pChrome = nullptr;
    }
 #else
+#ifdef RUBIDIUM_PLATFORM_QUEST
+   // OpenXR owns the HMD swapchain. SDL_CreateWindow blocks until an
+   // ANativeWindow exists; Quest destroys that surface as soon as the
+   // activity pauses (headset doffed or immersive compositor takeover).
+   m_pWindow = nullptr;
+   m_bOpen   = true;
+   m_pLogger->Log (LOGGER::kLOGLEVEL_Info, "APPFRAME_SDL",
+      std::string ("Quest XR frame (no SDL window) ") + std::to_string (nWidth) + "x" + std::to_string (nHeight));
+   (void) sTitle;
+#else
    m_pWindow = SDL_CreateWindow (sTitle, nWidth, nHeight, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
    if (m_pWindow)
    {
@@ -77,8 +91,10 @@ bool APPFRAME_SDL::Initialize (int nWidth, int nHeight, const char* sTitle, SNEE
          SDL_Delay (16);
       }
       m_bOpen = true;
+      m_pLogger->Log (LOGGER::kLOGLEVEL_Info, "APPFRAME_SDL", "SDL window created");
    }
    else m_pLogger->Log (LOGGER::kLOGLEVEL_Error, "APPFRAME_SDL", std::string ("SDL_CreateWindow failed: ") + SDL_GetError ());
+#endif
 #endif
 
    if (m_bOpen)
@@ -148,6 +164,14 @@ bool APPFRAME_SDL::HostWindowSize (int& nWidth, int& nHeight) const
 #endif
       bResult = true;
    }
+#ifdef RUBIDIUM_PLATFORM_QUEST
+   else
+   {
+      nWidth  = 1920;
+      nHeight = 1920;
+      bResult = true;
+   }
+#endif
 
    return bResult;
 }
@@ -247,6 +271,10 @@ void APPFRAME_SDL::FrameTabsRefresh ()
       if (m_nTabIx_Active >= 0)
          m_pChrome->SetUrl (m_apTab[m_nTabIx_Active]->Url ());
    }
+#ifdef __ANDROID__
+   else if (m_nTabIx_Active >= 0)
+      CHROME_XR::GetInstance ().SetUrl (m_apTab[m_nTabIx_Active]->Url ());
+#endif
 }
 
 void APPFRAME_SDL::ProcessInput ()
@@ -520,7 +548,14 @@ void* APPFRAME_SDL::Init (APPFRAME* pAppFrame_From, SNEEZE::CONTEXT::eSESSION eS
    m_pController->Window_OnCreate (this, pAppFrame_From, nX, nY, nWidth, nHeight, bMaximized);
 
    if (Initialize (nWidth, nHeight, PRODUCT_NAME, eSession))
+   {
+#ifdef RUBIDIUM_PLATFORM_QUEST
+      // No SDL window; Window_Create treats a non-null return as success.
+      return this;
+#else
       return NativeWindow ();
+#endif
+   }
 
    return nullptr;
 }

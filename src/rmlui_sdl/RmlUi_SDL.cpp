@@ -4,6 +4,8 @@
 #include "RmlUi_SDL_Renderer.h"
 #include "RmlUi_SDL_Platform.h"
 
+#include <cstring>
+
 #if defined(RUBIDIUM_PLATFORM_MACOS)
 #include "shell/MacChrome.h"
 #endif
@@ -282,6 +284,53 @@ public:
 
          m_bNeedsRender = false;
       }
+   }
+
+   void RenderOffscreen ()
+   {
+      bool bWas = m_bVisible;
+      m_bVisible = true;
+      Render ();
+      m_bVisible = bWas;
+   }
+
+   bool CaptureRgba (std::vector<uint8_t>& aRgba, int& nWidth, int& nHeight)
+   {
+      bool bOk = false;
+
+      RenderOffscreen ();
+
+      if (m_pSDLRenderer)
+      {
+         SDL_Surface* pSurface = SDL_RenderReadPixels (m_pSDLRenderer, nullptr);
+
+         if (pSurface)
+         {
+            SDL_Surface* pRgba = SDL_ConvertSurface (pSurface, SDL_PIXELFORMAT_RGBA32);
+
+            if (pRgba)
+            {
+               nWidth  = pRgba->w;
+               nHeight = pRgba->h;
+               aRgba.resize (static_cast<size_t> (nWidth) * static_cast<size_t> (nHeight) * 4u);
+               if (SDL_MUSTLOCK (pRgba))
+                  SDL_LockSurface (pRgba);
+               const uint8_t* pSrc = static_cast<const uint8_t*> (pRgba->pixels);
+               const int nPitch = pRgba->pitch;
+               for (int nY = 0; nY < nHeight; nY++)
+                  std::memcpy (aRgba.data () + static_cast<size_t> (nY) * static_cast<size_t> (nWidth) * 4u,
+                     pSrc + nY * nPitch, static_cast<size_t> (nWidth) * 4u);
+               if (SDL_MUSTLOCK (pRgba))
+                  SDL_UnlockSurface (pRgba);
+               SDL_DestroySurface (pRgba);
+               bOk = true;
+            }
+
+            SDL_DestroySurface (pSurface);
+         }
+      }
+
+      return bOk;
    }
 
    // macOS gives a native-fullscreen window (green button) its own Space. Hiding
@@ -621,6 +670,11 @@ SDL_WindowID RMLUI_SDL::SDLWindowID () const { return m_pImpl->m_nSDLWindowID; }
 
 void RMLUI_SDL::HandleEvent (SDL_Event& Event) { m_pImpl->HandleEvent (Event); }
 void RMLUI_SDL::Render ()                      { m_pImpl->Render (); }
+void RMLUI_SDL::RenderOffscreen ()             { m_pImpl->RenderOffscreen (); }
+bool RMLUI_SDL::CaptureRgba (std::vector<uint8_t>& aRgba, int& nWidth, int& nHeight)
+{
+   return m_pImpl->CaptureRgba (aRgba, nWidth, nHeight);
+}
 void RMLUI_SDL::Toggle ()                      { m_pImpl->Toggle (); }
 void RMLUI_SDL::ToggleFront ()                 { m_pImpl->ToggleFront (); }
 void RMLUI_SDL::Show ()                        { m_pImpl->Show (); }

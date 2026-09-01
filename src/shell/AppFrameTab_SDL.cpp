@@ -180,6 +180,7 @@ bool APPFRAMETAB_SDL::Init (void* pParentNative, int nContentTop, int nWidth, in
    {
       m_pCanvas->SetChildGeometry (0, nContentTop, nWidth, nHeight - nContentTop);
 
+#ifndef RUBIDIUM_PLATFORM_QUEST
       m_pInspectorRml = new INSPECTOR_RML ();
       if (!m_pInspectorRml->Initialize ())
       {
@@ -192,6 +193,7 @@ bool APPFRAMETAB_SDL::Init (void* pParentNative, int nContentTop, int nWidth, in
          // The inspector's glb Preview tab opens its own preview context/viewport.
          m_pInspectorRml->SetEngine (m_pSneeze);
       }
+#endif
 
       m_pCtxHost = new CONTEXT_HOST (&m_pInspectorRml);
       m_pVPHost  = new VIEWPORT_HOST_SDL (m_pCanvas);

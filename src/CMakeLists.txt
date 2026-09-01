@@ -254,9 +254,8 @@ set (SNEEZE_PLATFORM "${RUBIDIUM_PLATFORM}")
 # Parallel MSBuild can otherwise link those targets before Sneeze.lib is written (LNK1104).
 set (SNEEZE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set (SNEEZE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-if (ANDROID)
-   set (SNEEZE_ENABLE_XR OFF CACHE BOOL "" FORCE)
-endif ()
+# Phone Android scripts pass -DSNEEZE_ENABLE_XR=OFF. Quest (quest-arm64) passes ON.
+# Do not FORCE OFF here — that used to override CI / Quest -DSNEEZE_ENABLE_XR=ON.
 
 add_subdirectory ("${SNEEZE_DIR}/src" "${SNEEZE_DIR}/builds/${RUBIDIUM_PLATFORM}/build")
 
@@ -460,6 +459,7 @@ set (SHELL_HEADERS
    shell/AppFrameTab_SDL.h
    shell/AppFrame_SDL.h
    shell/ChromeRml.h
+   shell/ChromeXr.h
    shell/AppFrame_Win32.h
    shell/AppFrame_iOS.h
    shell/AppFrame_Mac.h
@@ -477,7 +477,7 @@ set (SHELL_SOURCES
    shell/App_Win32.cpp        shell/AppFrame_Win32.cpp  shell/AppFrameTab.cpp  shell/WinUtils.cpp
    shell/App_SDL.cpp          shell/AppFrame_SDL.cpp    shell/AppFrameTab_SDL.cpp  shell/ChromeRml.cpp  shell/UrlBarRml.cpp
    shell/AppFrame_iOS.cpp     shell/AppFrame_Mac.cpp
-   shell/AppFrame_Android.cpp shell/AppFrame_Linux.cpp
+   shell/AppFrame_Android.cpp shell/AppFrame_Linux.cpp shell/ChromeXr.cpp
 )
 set (MAIN_SOURCES_ALL main_Win32.cpp main_SDL.cpp)
 
@@ -503,7 +503,7 @@ else ()
    elseif (APPLE)
       list (APPEND SHELL_SOURCES_PLATFORM shell/AppFrame_Mac.cpp shell/MacChrome.mm)
    elseif (ANDROID)
-      list (APPEND SHELL_SOURCES_PLATFORM shell/AppFrame_Android.cpp)
+      list (APPEND SHELL_SOURCES_PLATFORM shell/AppFrame_Android.cpp shell/ChromeXr.cpp)
    else ()
       list (APPEND SHELL_SOURCES_PLATFORM shell/AppFrame_Linux.cpp)
    endif ()
@@ -851,6 +851,7 @@ target_compile_definitions (Rubidium PRIVATE
    $<$<AND:$<BOOL:${APPLE}>,$<NOT:$<STREQUAL:${CMAKE_SYSTEM_NAME},iOS>>>:RUBIDIUM_PLATFORM_MACOS>
    $<$<STREQUAL:${CMAKE_SYSTEM_NAME},iOS>:RUBIDIUM_PLATFORM_IOS>
    $<$<BOOL:${ANDROID}>:RUBIDIUM_PLATFORM_ANDROID>
+   $<$<AND:$<BOOL:${ANDROID}>,$<STREQUAL:${RUBIDIUM_PLATFORM},quest-arm64>>:RUBIDIUM_PLATFORM_QUEST>
    $<$<AND:$<NOT:$<BOOL:${WIN32}>>,$<NOT:$<BOOL:${APPLE}>>,$<NOT:$<BOOL:${ANDROID}>>>:RUBIDIUM_PLATFORM_LINUX>
    $<$<STREQUAL:${CMAKE_SYSTEM_NAME},iOS>:RUBIDIUM_IOS>
 )

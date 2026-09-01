@@ -27,7 +27,14 @@ bool CANVAS_NATIVE::Initialize (void* pParentHandle, int nWidth, int nHeight)
       APPNATIVE::GetInstance ()->SDLWindow_Register (this);
       bResult = true;
    }
-   else m_pLogger->Log (LOGGER::kLOGLEVEL_Error, "CANVAS", "No parent window provided");
+   else
+   {
+#ifdef RUBIDIUM_PLATFORM_QUEST
+      bResult = true;
+#else
+      m_pLogger->Log (LOGGER::kLOGLEVEL_Error, "CANVAS", "No parent window provided");
+#endif
+   }
 
    return bResult;
 }

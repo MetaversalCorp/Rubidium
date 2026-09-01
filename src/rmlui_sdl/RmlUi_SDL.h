@@ -3,7 +3,11 @@
 #ifndef RUBIDIUM_RMLUI_SDL_H
 #define RUBIDIUM_RMLUI_SDL_H
 
+#include "shell/App.h"
+
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace Rml { class ElementDocument; }
 
@@ -24,6 +28,8 @@ public:
 
    Rml::ElementDocument* Document ();
 
+   bool CaptureRgba (std::vector<uint8_t>& aRgba, int& nWidth, int& nHeight);
+   void RenderOffscreen ();
    void Render ();
    void Toggle ();
 

@@ -17,18 +17,24 @@
 #include "version.h"
 #include "Brand.h"
 
+#include <SDL3/SDL.h>
+
 #include <atomic>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 
 #ifdef __ANDROID__
+#include "xr/XrRuntime.h"
+#include "shell/ChromeXr.h"
 #include <SDL3/SDL_system.h>
 #include <jni.h>
 #include <fstream>
 #include <mutex>
 #include <vector>
+#endif
 
+#ifdef __ANDROID__
 static bool ExtractAndroidAsset (const std::string& sAssetPath, const std::string& sDestPath)
 {
    bool bResult = false;
@@ -132,6 +138,14 @@ void OnBeforeSDLInit (LOGGER* pLogger)
    // otherwise causes Filament to be initialized with stale dimensions.
 
    SDL_SetHint (SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+
+#ifdef RUBIDIUM_PLATFORM_QUEST
+   // Quest pauses the activity (and destroys the SurfaceView) whenever the
+   // headset is doffed or OpenXR takes the compositor. SDL's default pause
+   // path blocks the native thread waiting for a window that will never come.
+   SDL_SetHint ("SDL_ANDROID_BLOCK_ON_PAUSE", "0");
+   (void) pLogger;
+#endif
 }
 
 void OnAfterSDLInit (LOGGER* pLogger)
@@ -189,6 +203,39 @@ Java_com_rp1_Rubidium_MainActivity_nativeUrlSubmitted (JNIEnv* env, jclass /*cls
          g_bPendingUrl = true;
          env->ReleaseStringUTFChars (jUrl, pszUrl);
       }
+   }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeUrlTextChanged (JNIEnv* env, jclass /*cls*/, jstring jUrl)
+{
+   if (jUrl)
+   {
+      const char* pszUrl = env->GetStringUTFChars (jUrl, nullptr);
+
+      if (pszUrl)
+      {
+         RUBIDIUM::CHROME_XR::GetInstance ().SetUrl (pszUrl, false);
+         env->ReleaseStringUTFChars (jUrl, pszUrl);
+      }
+   }
+}
+
+static void AndroidCallActivityVoid (const char* sMethod)
+{
+   JNIEnv* env = static_cast<JNIEnv*> (SDL_GetAndroidJNIEnv ());
+   jobject activity = static_cast<jobject> (SDL_GetAndroidActivity ());
+
+   if (env  &&  activity  &&  sMethod)
+   {
+      jclass cls = env->GetObjectClass (activity);
+      jmethodID mid = env->GetMethodID (cls, sMethod, "()V");
+
+      if (mid)
+         env->CallVoidMethod (activity, mid);
+
+      env->DeleteLocalRef (cls);
+      env->DeleteLocalRef (activity);
    }
 }
 #endif
@@ -376,6 +423,16 @@ public:
 
          if (bPendingUrl  &&  !m_apAppFrame.empty ())
             static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Chrome_OnUrlSubmit (sPendingUrl);
+
+#ifdef RUBIDIUM_PLATFORM_QUEST
+         if (m_pSneeze  &&  m_pSneeze->XrRuntime ()  &&  m_pSneeze->XrRuntime ()->ConsumeUrlFocus ())
+         {
+            CHROME_XR::GetInstance ().Focus ();
+            AndroidCallActivityVoid ("requestUrlKeyboard");
+         }
+
+         CHROME_XR::GetInstance ().Tick (m_pSneeze);
+#endif
 #endif
 
          // Defer the "Release Notes" popup until the chrome window has pumped for a
@@ -386,8 +443,10 @@ public:
          {
             m_nReleaseNotesDeferFrames--;
 
+#ifndef RUBIDIUM_PLATFORM_QUEST
             if (m_nReleaseNotesDeferFrames == 0)
                m_pApp->ShowReleaseNotesIfUpdated (m_apAppFrame.empty () ? nullptr : m_apAppFrame.front ()->NativeWindow ());
+#endif
          }
 
          SDL_Event ev;
@@ -413,6 +472,21 @@ public:
             else
                m_pApp->SDLWindow_Translate (ev);
          }
+
+#ifdef __ANDROID__
+         while (SDL_PeepEvents (&ev, 1, SDL_GETEVENT, SDL_EVENT_GAMEPAD_BUTTON_DOWN, SDL_EVENT_GAMEPAD_BUTTON_DOWN) > 0)
+         {
+#ifdef RUBIDIUM_PLATFORM_QUEST
+            if (ev.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH
+             || ev.gbutton.button == SDL_GAMEPAD_BUTTON_START
+             || ev.gbutton.button == SDL_GAMEPAD_BUTTON_BACK)
+            {
+               CHROME_XR::GetInstance ().Focus ();
+               AndroidCallActivityVoid ("requestUrlKeyboard");
+            }
+#endif
+         }
+#endif
 
          // Route mouse + keyboard events to the per-window Canvas so viewport
          // input works (drag-rotate, scroll-zoom, +/- keys). The Win32 loop
@@ -601,18 +675,24 @@ public:
 
       m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Info, "App", std::string (PRODUCT_NAME) + " " + std::string (RUBIDIUM_VERSION));
 
-      m_pSneeze = new SNEEZE::ENGINE (m_pApp);
+      OnBeforeSDLInit (m_pApp->Logger ());
 
-      Config.bBoundingBox = jSettings["developer"]["boundingbox"];
+#ifdef __ANDROID__
+      const Uint32 nSdlFlags = SDL_INIT_VIDEO | SDL_INIT_GAMEPAD;
+#else
+      const Uint32 nSdlFlags = SDL_INIT_VIDEO;
+#endif
 
-      if (m_pSneeze->Initialize (Config))
+      if (SDL_Init (nSdlFlags))
       {
-         OnBeforeSDLInit (m_pApp->Logger ());
+         OnAfterSDLInit (m_pApp->Logger ());
 
-         if (SDL_Init (SDL_INIT_VIDEO))
+         m_pSneeze = new SNEEZE::ENGINE (m_pApp);
+
+         Config.bBoundingBox = jSettings["developer"]["boundingbox"];
+
+         if (m_pSneeze->Initialize (Config))
          {
-            OnAfterSDLInit (m_pApp->Logger ());
-
             RubidiumRmlSystem_Install (m_pApp->Logger ());
 
             SDL_AddEventWatch (APP::SDLWindow_Filter, m_pApp);
@@ -621,13 +701,11 @@ public:
             {
                if (Window_Create (nullptr, SNEEZE::CONTEXT::kSESSION_PERSISTENT))
                {
+#ifdef RUBIDIUM_PLATFORM_QUEST
+                  CHROME_XR::GetInstance ().Initialize ();
+#endif
                   if (m_pApp->CreateUpdater (this))
                   {
-                     // Defer the "Release Notes" popup into the live EventLoop instead
-                     // of showing it here. On pure-SDL platforms a window created
-                     // and shown before the loop pumps never maps / composites.
-                     // A few extra frames after the first pump are still needed on
-                     // Linux/X11 (see EventLoop ()).
                      m_nReleaseNotesDeferFrames = 8;
 
                      EventLoop (nResult);
@@ -640,17 +718,21 @@ public:
             else m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "App", "Failed to load fonts");
 
             SDL_RemoveEventWatch (APP::SDLWindow_Filter, m_pApp);
-
-            SDL_Quit ();
          }
-         else m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "App", std::string ("SDL_Init failed: ") + SDL_GetError ());
+         else m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "App", "Failed to initialize Sneeze engine");
+
+#ifdef RUBIDIUM_PLATFORM_QUEST
+         CHROME_XR::GetInstance ().Shutdown ();
+#endif
+
+         g_bShuttingDown.store (true);
+
+         delete m_pSneeze;
+         m_pSneeze = nullptr;
+
+         SDL_Quit ();
       }
-      else m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "App", "Failed to initialize Sneeze engine");
-
-      g_bShuttingDown.store (true);
-
-      delete m_pSneeze;
-      m_pSneeze = nullptr;
+      else m_pApp->Logger ()->Log (LOGGER::kLOGLEVEL_Error, "App", std::string ("SDL_Init failed: ") + SDL_GetError ());
 
       return nResult;
    }
@@ -792,3 +874,35 @@ bool APPSDL::MovementKeysSuppressed () const
 
    return bResult;
 }
+
+#ifdef __ANDROID__
+void* APPSDL::XrAndroidVm () const
+{
+   JavaVM* pVm = nullptr;
+   JNIEnv* env = static_cast<JNIEnv*> (SDL_GetAndroidJNIEnv ());
+
+   if (env)
+      env->GetJavaVM (&pVm);
+
+   return pVm;
+}
+
+void* APPSDL::XrAndroidActivity () const
+{
+   static jobject s_pActivity = nullptr;
+
+   if (!s_pActivity)
+   {
+      JNIEnv* env = static_cast<JNIEnv*> (SDL_GetAndroidJNIEnv ());
+      jobject pLocal = static_cast<jobject> (SDL_GetAndroidActivity ());
+
+      if (env  &&  pLocal)
+      {
+         s_pActivity = env->NewGlobalRef (pLocal);
+         env->DeleteLocalRef (pLocal);
+      }
+   }
+
+   return s_pActivity;
+}
+#endif

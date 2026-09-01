@@ -1,4 +1,6 @@
-# Android arm64 build. Same flags as build-windows.ps1 (NDK Ninja, then debug APK).
+# Android arm64 / Quest arm64 build. Same flags as build-windows.ps1 (NDK Ninja, then APK).
+# Phone (android-arm64, default): SNEEZE_ENABLE_XR=OFF, min SDK 26, AndroidManifest.xml.
+# Quest  (-Quest or -Platform quest-arm64): XR ON, min SDK 29, AndroidManifest-quest.xml.
 #
 # Default: compile + link Rubidium only. Plain `cmake --build` against the
 # Rubidium build tree. No dep checks, no configure step. Fails naturally if
@@ -77,6 +79,7 @@
 #   .\scripts\build-android.ps1 -All -Rebuild          # Full-scrub rebuild of deps + Rubidium
 #   .\scripts\build-android.ps1 -List                  # Stamp cache state
 #   .\scripts\build-android.ps1 -Fresh -ManifestCdnUrl "https://cdn.dev.example/rubidium/"
+#   .\scripts\build-android.ps1 -Quest -All            # Quest 3 APK (XR ON, min SDK 29)
 
 [CmdletBinding()]
 param (
@@ -89,12 +92,16 @@ param (
    [switch]   $Deps,
    [switch]   $All,
    [switch]   $Fresh,
+   [switch]   $Quest,
    [string]   $ManifestCdnUrl,
    [Parameter (ValueFromRemainingArguments = $true)]
    [string[]] $CMakeExtraArgs
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($Quest) { $Platform = 'quest-arm64' }
+$IsQuest = ($Platform -eq 'quest-arm64')
 
 $modeCount = @($Deps, $All, $Fresh) | Where-Object { $_ } | Measure-Object | Select-Object -ExpandProperty Count
 if ($modeCount -gt 1) {
@@ -140,14 +147,16 @@ $Ninja = if ($SdkCmakeBin -and (Test-Path (Join-Path $SdkCmakeBin 'ninja.exe')))
    Join-Path $SdkCmakeBin 'ninja.exe'
 } else { 'ninja' }
 
+$AndroidApi = if ($IsQuest) { 'android-29' } else { 'android-26' }
+$XrFlag = if ($IsQuest) { '-DSNEEZE_ENABLE_XR=ON' } else { '-DSNEEZE_ENABLE_XR=OFF' }
 $AndroidCmakeArgs = @(
    '-G', 'Ninja'
    "-DCMAKE_TOOLCHAIN_FILE=$NdkToolchain"
    '-DANDROID_ABI=arm64-v8a'
-   '-DANDROID_PLATFORM=android-26'
+   "-DANDROID_PLATFORM=$AndroidApi"
    '-DANDROID_STL=c++_shared'
    "-DCMAKE_MAKE_PROGRAM=$Ninja"
-   '-DSNEEZE_ENABLE_XR=OFF'
+   $XrFlag
 )
 
 $ConfigLower     = $Config.ToLower()
@@ -313,6 +322,8 @@ function Invoke-AndroidApk {
    if (-not $platformJar) { throw "No android.jar under $AndroidSdk\platforms" }
 
    $pkg = Join-Path $RubidiumDir 'pkg\android'
+   $manifestName = if ($IsQuest) { 'AndroidManifest-quest.xml' } else { 'AndroidManifest.xml' }
+   $minSdk = if ($IsQuest) { 29 } else { 26 }
    $stage = Join-Path $RubidiumOutDir 'apk-stage'
    $outDir = Join-Path $RubidiumInstallDir 'pkg'
    $version = (Get-Content (Join-Path $RubidiumDir 'VERSION') -Raw).Trim()
@@ -354,8 +365,8 @@ function Invoke-AndroidApk {
    if ($LASTEXITCODE -ne 0) { throw "aapt2 compile failed" }
    $unaligned = Join-Path $stage 'unaligned.apk'
    & (Get-AndroidBuildTool 'aapt2') link -o $unaligned -I $platformJar `
-      --manifest (Join-Path $pkg 'AndroidManifest.xml') `
-      --min-sdk-version 26 --target-sdk-version $targetSdk `
+      --manifest (Join-Path $pkg $manifestName) `
+      --min-sdk-version $minSdk --target-sdk-version $targetSdk `
       --version-code 1 --version-name $version $resZip
    if ($LASTEXITCODE -ne 0) { throw "aapt2 link failed" }
 
@@ -379,7 +390,7 @@ function Invoke-AndroidApk {
       if ($LASTEXITCODE -ne 0) { throw "keytool failed" }
    }
 
-   $signed = Join-Path $outDir ("{0}-{1}-android-arm64-signed.apk" -f $Product.Name.ToLowerInvariant(), $version)
+   $signed = Join-Path $outDir ("{0}-{1}-{2}-signed.apk" -f $Product.Name.ToLowerInvariant(), $version, $Platform)
    & (Get-AndroidBuildTool 'apksigner') sign `
       --ks $keystore --ks-key-alias androiddebugkey `
       --ks-pass pass:android --key-pass pass:android `

@@ -23,6 +23,11 @@ namespace RUBIDIUM
 
       bool MovementKeysSuppressed () const override;
 
+#ifdef __ANDROID__
+      void* XrAndroidVm ()       const override;
+      void* XrAndroidActivity () const override;
+#endif
+
    private:
       APPSDL ();
       ~APPSDL ();
