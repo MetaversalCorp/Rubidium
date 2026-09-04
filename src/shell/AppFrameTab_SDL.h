@@ -55,6 +55,7 @@ namespace RUBIDIUM
       void Title  (const std::string& sTitle);
       void Url    (const std::string& sUrl);
       void Reload (bool bReset);
+      void Passthrough (bool bPassthrough);
 
    private:
       LOGGER*                    m_pLogger;
@@ -72,6 +73,7 @@ namespace RUBIDIUM
       SNEEZE::CONTEXT::eSESSION  m_eSession;
       bool                       m_bActive;
       bool                       m_bInputBlocked;
+      bool                       m_bPassthrough;
       int                        m_nContentTop;
 
       bool CreateContext (bool bReset = false);

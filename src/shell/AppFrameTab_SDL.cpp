@@ -142,6 +142,7 @@ APPFRAMETAB_SDL::APPFRAMETAB_SDL (SNEEZE::ENGINE* pSneeze, LOGGER* pLogger) :
    m_eSession      (SNEEZE::CONTEXT::kSESSION_PERSISTENT),
    m_bActive       (false),
    m_bInputBlocked (false),
+   m_bPassthrough  (false),
    m_nContentTop   (0)
 {
 }
@@ -213,6 +214,7 @@ bool APPFRAMETAB_SDL::CreateContext (bool bReset)
    if ((m_pContext = m_pSneeze->Context_Open (m_pCtxHost, m_sUrl, m_eSession, bReset)) != nullptr)
    {
       m_pViewport = m_pContext->Viewport ();
+      m_pViewport->Passthrough (m_bPassthrough);
 
       if (m_pInspectorRml)
       {
@@ -348,6 +350,14 @@ void APPFRAMETAB_SDL::Url (const std::string& sUrl)
       if (bActive)
          ViewportAttach ();
    }
+}
+
+void APPFRAMETAB_SDL::Passthrough (bool bPassthrough)
+{
+   m_bPassthrough = bPassthrough;
+
+   if (m_pViewport)
+      m_pViewport->Passthrough (bPassthrough);
 }
 
 void APPFRAMETAB_SDL::Reload (bool bReset)

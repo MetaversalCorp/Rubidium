@@ -173,6 +173,9 @@ namespace
    std::mutex  g_mxPendingUrl;
    std::string g_sPendingUrl;
    bool        g_bPendingUrl = false;
+   std::mutex  g_mxPendingPassthrough;
+   bool        g_bPendingPassthrough = false;
+   bool        g_bPassthrough        = false;
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -190,6 +193,14 @@ Java_com_rp1_Rubidium_MainActivity_nativeUrlSubmitted (JNIEnv* env, jclass /*cls
          env->ReleaseStringUTFChars (jUrl, pszUrl);
       }
    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativePassthrough (JNIEnv* /*env*/, jclass /*cls*/, jboolean bEnable)
+{
+   std::lock_guard<std::mutex> lock (g_mxPendingPassthrough);
+   g_bPassthrough        = (bEnable == JNI_TRUE);
+   g_bPendingPassthrough = true;
 }
 #endif
 
@@ -361,7 +372,9 @@ public:
 
 #ifdef __ANDROID__
          std::string sPendingUrl;
-         bool        bPendingUrl = false;
+         bool        bPendingUrl          = false;
+         bool        bPendingPassthrough  = false;
+         bool        bPassthrough         = false;
 
          {
             std::lock_guard<std::mutex> lock (g_mxPendingUrl);
@@ -374,8 +387,22 @@ public:
             }
          }
 
+         {
+            std::lock_guard<std::mutex> lock (g_mxPendingPassthrough);
+
+            if (g_bPendingPassthrough)
+            {
+               bPassthrough          = g_bPassthrough;
+               g_bPendingPassthrough = false;
+               bPendingPassthrough  = true;
+            }
+         }
+
          if (bPendingUrl  &&  !m_apAppFrame.empty ())
             static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Chrome_OnUrlSubmit (sPendingUrl);
+
+         if (bPendingPassthrough  &&  !m_apAppFrame.empty ())
+            static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Passthrough (bPassthrough);
 #endif
 
          // Defer the "Release Notes" popup until the chrome window has pumped for a

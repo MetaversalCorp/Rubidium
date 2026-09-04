@@ -70,6 +70,10 @@ public:
    // canvas window -- used to scope global hotkeys (F12) to the focused frame.
    bool OwnsWindowID (SDL_WindowID nWindowID) const;
 
+   // Android AR passthrough: transparent backdrop so the camera feed shows
+   // through. No-op on platforms that do not host a video underlay.
+   void Passthrough (bool bPassthrough);
+
 #if defined(RUBIDIUM_PLATFORM_LINUX) || defined(RUBIDIUM_PLATFORM_MACOS)
    void DismissChromeMenuIfClickOutside (SDL_Event& Event);
 #endif

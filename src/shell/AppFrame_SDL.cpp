@@ -56,7 +56,13 @@ bool APPFRAME_SDL::Initialize (int nWidth, int nHeight, const char* sTitle, SNEE
       m_pChrome = nullptr;
    }
 #else
-   m_pWindow = SDL_CreateWindow (sTitle, nWidth, nHeight, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+   Uint32 nWindowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN;
+#ifdef __ANDROID__
+#ifdef SDL_WINDOW_TRANSPARENT
+   nWindowFlags |= SDL_WINDOW_TRANSPARENT;
+#endif
+#endif
+   m_pWindow = SDL_CreateWindow (sTitle, nWidth, nHeight, nWindowFlags);
    if (m_pWindow)
    {
       // Some platforms (Android, iOS) ignore the requested size and create the
@@ -404,6 +410,12 @@ void APPFRAME_SDL::Chrome_OnTabClose (int nTabIx)
 void APPFRAME_SDL::Chrome_OnTabAdd ()
 {
    FrameTabAdd ();
+}
+
+void APPFRAME_SDL::Passthrough (bool bPassthrough)
+{
+   if (m_nTabIx_Active >= 0)
+      m_apTab[m_nTabIx_Active]->Passthrough (bPassthrough);
 }
 
 void APPFRAME_SDL::Chrome_OnUrlSubmit (const std::string& sUrl)
