@@ -418,6 +418,18 @@ void APPFRAME_SDL::Passthrough (bool bPassthrough)
       m_apTab[m_nTabIx_Active]->Passthrough (bPassthrough);
 }
 
+void APPFRAME_SDL::TrackingRotation (double dQx, double dQy, double dQz, double dQw)
+{
+   if (m_nTabIx_Active >= 0)
+      m_apTab[m_nTabIx_Active]->TrackingRotation (dQx, dQy, dQz, dQw);
+}
+
+void APPFRAME_SDL::TrackingFovY (double dFovY)
+{
+   if (m_nTabIx_Active >= 0)
+      m_apTab[m_nTabIx_Active]->TrackingFovY (dFovY);
+}
+
 void APPFRAME_SDL::Chrome_OnUrlSubmit (const std::string& sUrl)
 {
    if (m_nTabIx_Active >= 0)

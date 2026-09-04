@@ -56,6 +56,8 @@ namespace RUBIDIUM
       void Url    (const std::string& sUrl);
       void Reload (bool bReset);
       void Passthrough (bool bPassthrough);
+      void TrackingRotation (double dQx, double dQy, double dQz, double dQw);
+      void TrackingFovY     (double dFovY);
 
    private:
       LOGGER*                    m_pLogger;

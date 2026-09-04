@@ -357,7 +357,39 @@ void APPFRAMETAB_SDL::Passthrough (bool bPassthrough)
    m_bPassthrough = bPassthrough;
 
    if (m_pViewport)
+   {
       m_pViewport->Passthrough (bPassthrough);
+
+      if (!bPassthrough)
+         m_pViewport->Camera_Deactivate ();
+   }
+}
+
+// IMU / OpenXR orientation only. Translation stays at the last fabric
+// (or VPS) CAMERA position until 6DoF tracking writes it.
+void APPFRAMETAB_SDL::TrackingRotation (double dQx, double dQy, double dQz, double dQw)
+{
+   if (m_pViewport)
+   {
+      SNEEZE::VIEWPORT::CAMERA Camera = m_pViewport->Camera ();
+
+      Camera.aRotation[0] = dQx;
+      Camera.aRotation[1] = dQy;
+      Camera.aRotation[2] = dQz;
+      Camera.aRotation[3] = dQw;
+      m_pViewport->Camera (Camera);
+   }
+}
+
+void APPFRAMETAB_SDL::TrackingFovY (double dFovY)
+{
+   if (m_pViewport)
+   {
+      SNEEZE::VIEWPORT::CAMERA Camera = m_pViewport->Camera ();
+
+      Camera.dFovY = dFovY;
+      m_pViewport->Camera (Camera);
+   }
 }
 
 void APPFRAMETAB_SDL::Reload (bool bReset)

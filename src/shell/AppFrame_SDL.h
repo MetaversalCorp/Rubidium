@@ -74,6 +74,15 @@ public:
    // through. No-op on platforms that do not host a video underlay.
    void Passthrough (bool bPassthrough);
 
+   // Host-tracked camera orientation (Sneeze CAMERA quaternion x,y,z,w).
+   // Phone IMU today; OpenXR views later. Position is left at the last
+   // VIEWPORT::Camera() (fabric spawn until VPS writes translation).
+   void TrackingRotation (double dQx, double dQy, double dQz, double dQw);
+
+   // Vertical FOV in radians for the tracked camera (phone passthrough,
+   // later OpenXR views). 0 restores the compositor default.
+   void TrackingFovY (double dFovY);
+
 #if defined(RUBIDIUM_PLATFORM_LINUX) || defined(RUBIDIUM_PLATFORM_MACOS)
    void DismissChromeMenuIfClickOutside (SDL_Event& Event);
 #endif

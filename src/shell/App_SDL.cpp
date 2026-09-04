@@ -25,6 +25,7 @@
 #ifdef __ANDROID__
 #include <SDL3/SDL_system.h>
 #include <jni.h>
+#include <cmath>
 #include <fstream>
 #include <mutex>
 #include <vector>
@@ -176,6 +177,93 @@ namespace
    std::mutex  g_mxPendingPassthrough;
    bool        g_bPendingPassthrough = false;
    bool        g_bPassthrough        = false;
+   std::mutex  g_mxTracking;
+   bool        g_bTracking           = false;
+   double      g_dLookX              = 1.0;
+   double      g_dLookY              = 0.0;
+   double      g_dLookZ              = 0.0;
+   double      g_dUpX                = 0.0;
+   double      g_dUpY                = 0.0;
+   double      g_dUpZ                = 1.0;
+   double      g_dFovY               = 0.0;
+
+   bool QuatFromLookUp (double dFx, double dFy, double dFz,
+                        double dUx, double dUy, double dUz,
+                        double& dQx, double& dQy, double& dQz, double& dQw)
+   {
+      bool   bResult = false;
+      double dFLen   = std::sqrt (dFx * dFx + dFy * dFy + dFz * dFz);
+
+      if (dFLen > 1e-9)
+      {
+         dFx /= dFLen;
+         dFy /= dFLen;
+         dFz /= dFLen;
+
+         double dRx = dUy * dFz - dUz * dFy;
+         double dRy = dUz * dFx - dUx * dFz;
+         double dRz = dUx * dFy - dUy * dFx;
+         double dRLen = std::sqrt (dRx * dRx + dRy * dRy + dRz * dRz);
+
+         if (dRLen > 1e-9)
+         {
+            dRx /= dRLen;
+            dRy /= dRLen;
+            dRz /= dRLen;
+            dUx  = dFy * dRz - dFz * dRy;
+            dUy  = dFz * dRx - dFx * dRz;
+            dUz  = dFx * dRy - dFy * dRx;
+
+            double dM00 = dFx, dM01 = dRx, dM02 = dUx;
+            double dM10 = dFy, dM11 = dRy, dM12 = dUy;
+            double dM20 = dFz, dM21 = dRz, dM22 = dUz;
+            double dTrace = dM00 + dM11 + dM22;
+
+            if (dTrace > 0.0)
+            {
+               double dS = 0.5 / std::sqrt (dTrace + 1.0);
+
+               dQw     = 0.25 / dS;
+               dQx     = (dM21 - dM12) * dS;
+               dQy     = (dM02 - dM20) * dS;
+               dQz     = (dM10 - dM01) * dS;
+               bResult = true;
+            }
+            else if (dM00 > dM11  &&  dM00 > dM22)
+            {
+               double dS = 2.0 * std::sqrt (1.0 + dM00 - dM11 - dM22);
+
+               dQw     = (dM21 - dM12) / dS;
+               dQx     = 0.25 * dS;
+               dQy     = (dM01 + dM10) / dS;
+               dQz     = (dM02 + dM20) / dS;
+               bResult = true;
+            }
+            else if (dM11 > dM22)
+            {
+               double dS = 2.0 * std::sqrt (1.0 + dM11 - dM00 - dM22);
+
+               dQw     = (dM02 - dM20) / dS;
+               dQx     = (dM01 + dM10) / dS;
+               dQy     = 0.25 * dS;
+               dQz     = (dM12 + dM21) / dS;
+               bResult = true;
+            }
+            else
+            {
+               double dS = 2.0 * std::sqrt (1.0 + dM22 - dM00 - dM11);
+
+               dQw     = (dM10 - dM01) / dS;
+               dQx     = (dM02 + dM20) / dS;
+               dQy     = (dM12 + dM21) / dS;
+               dQz     = 0.25 * dS;
+               bResult = true;
+            }
+         }
+      }
+
+      return bResult;
+   }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -201,6 +289,28 @@ Java_com_rp1_Rubidium_MainActivity_nativePassthrough (JNIEnv* /*env*/, jclass /*
    std::lock_guard<std::mutex> lock (g_mxPendingPassthrough);
    g_bPassthrough        = (bEnable == JNI_TRUE);
    g_bPendingPassthrough = true;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeTrackingLook (JNIEnv* /*env*/, jclass /*cls*/,
+   jfloat fLookX, jfloat fLookY, jfloat fLookZ,
+   jfloat fUpX,   jfloat fUpY,   jfloat fUpZ)
+{
+   std::lock_guard<std::mutex> lock (g_mxTracking);
+   g_dLookX     = static_cast<double> (fLookX);
+   g_dLookY     = static_cast<double> (fLookY);
+   g_dLookZ     = static_cast<double> (fLookZ);
+   g_dUpX       = static_cast<double> (fUpX);
+   g_dUpY       = static_cast<double> (fUpY);
+   g_dUpZ       = static_cast<double> (fUpZ);
+   g_bTracking  = true;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeTrackingFovY (JNIEnv* /*env*/, jclass /*cls*/, jfloat fFovY)
+{
+   std::lock_guard<std::mutex> lock (g_mxTracking);
+   g_dFovY = static_cast<double> (fFovY);
 }
 #endif
 
@@ -390,9 +500,10 @@ public:
          {
             std::lock_guard<std::mutex> lock (g_mxPendingPassthrough);
 
+            bPassthrough = g_bPassthrough;
+
             if (g_bPendingPassthrough)
             {
-               bPassthrough          = g_bPassthrough;
                g_bPendingPassthrough = false;
                bPendingPassthrough  = true;
             }
@@ -403,6 +514,40 @@ public:
 
          if (bPendingPassthrough  &&  !m_apAppFrame.empty ())
             static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Passthrough (bPassthrough);
+
+         if (bPassthrough  &&  !m_apAppFrame.empty ())
+         {
+            double dLookX = 1.0, dLookY = 0.0, dLookZ = 0.0;
+            double dUpX   = 0.0, dUpY   = 0.0, dUpZ   = 1.0;
+            double dFovY  = 0.0;
+            bool   bHave  = false;
+
+            {
+               std::lock_guard<std::mutex> lock (g_mxTracking);
+
+               dFovY = g_dFovY;
+
+               if (g_bTracking)
+               {
+                  dLookX = g_dLookX;
+                  dLookY = g_dLookY;
+                  dLookZ = g_dLookZ;
+                  dUpX   = g_dUpX;
+                  dUpY   = g_dUpY;
+                  dUpZ   = g_dUpZ;
+                  bHave  = true;
+               }
+            }
+
+            double dQx = 0.0, dQy = 0.0, dQz = 0.0, dQw = 1.0;
+            APPFRAME_SDL* pFrame = static_cast<APPFRAME_SDL*> (m_apAppFrame.front ());
+
+            if (bHave  &&  QuatFromLookUp (dLookX, dLookY, dLookZ, dUpX, dUpY, dUpZ, dQx, dQy, dQz, dQw))
+               pFrame->TrackingRotation (dQx, dQy, dQz, dQw);
+
+            if (dFovY > 1e-4)
+               pFrame->TrackingFovY (dFovY);
+         }
 #endif
 
          // Defer the "Release Notes" popup until the chrome window has pumped for a
