@@ -1,10 +1,10 @@
 # Copyright 2026 Metaversal Corporation. All rights reserved.
 #
-# Substitutes branding/Brand.h.in from branding/Product.cmake into -OutFile.
+# Substitutes src/version.h.in from the VERSION file into -OutFile.
 # Used by the hand-maintained MSVC PreBuildEvent (CMake uses configure_file).
 # Writes the output only when the generated text differs, so a Sneeze rebuild
 # (which still runs this PreBuildEvent) does not bump the header timestamp
-# and force Brand.h consumers to recompile.
+# and force version.h consumers to recompile.
 
 param (
    [Parameter (Mandatory = $true)]
@@ -15,24 +15,13 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-$cmake = Get-Content (Join-Path $RepoRoot 'branding\Product.cmake') -Raw
-$template = Get-Content (Join-Path $RepoRoot 'branding\Brand.h.in') -Raw
-
-function Get-ProductValue ([string] $Name)
-{
-   $pattern = 'set \(' + [regex]::Escape($Name) + '\s+"([^"]*)"\)'
-   $match = [regex]::Match($cmake, $pattern)
-   if (-not $match.Success)
-   {
-      throw "branding/Product.cmake is missing $Name"
-   }
-   $match.Groups[1].Value
-}
-
-$header = [regex]::Replace($template, '@(\w+)@', {
-   param ($Match)
-   Get-ProductValue $Match.Groups[1].Value
-})
+$aVersion = (Get-Content (Join-Path $RepoRoot 'VERSION') -Raw).Trim().Split('.')
+$template = Get-Content (Join-Path $RepoRoot 'src\version.h.in') -Raw
+$header = $template `
+   -replace '@RUBIDIUM_VER_MAJOR@', $aVersion[0] `
+   -replace '@RUBIDIUM_VER_MINOR@', $aVersion[1] `
+   -replace '@RUBIDIUM_VER_PATCH@', $aVersion[2] `
+   -replace '@PROJECT_VERSION@', ($aVersion -join '.')
 
 $outDir = Split-Path -Parent $OutFile
 if (-not (Test-Path $outDir))

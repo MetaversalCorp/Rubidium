@@ -99,7 +99,7 @@
     </Link>
     <PreBuildEvent>
       <Command>powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-BrandHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)Brand.h"
-powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
+powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-VersionHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)version.h"</Command>
       <Message>Generating Brand.h and version.h</Message>
     </PreBuildEvent>
     <PostBuildEvent>
@@ -150,7 +150,7 @@ xcopy /Y /I "$(RubidiumRoot)\pkg\logo.png" "$(OutDir)images\"</Command>
     </Link>
     <PreBuildEvent>
       <Command>powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-BrandHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)Brand.h"
-powershell -NoProfile -Command "$v = (Get-Content '$(RubidiumRoot)\VERSION' -Raw).Trim().Split('.'); $h = (Get-Content '$(RubidiumRoot)\src\version.h.in' -Raw) -replace '@RUBIDIUM_VER_MAJOR@',$v[0] -replace '@RUBIDIUM_VER_MINOR@',$v[1] -replace '@RUBIDIUM_VER_PATCH@',$v[2] -replace '@PROJECT_VERSION@',($v -join '.'); [IO.File]::WriteAllText('$(IntDir)version.h', $h)"</Command>
+powershell -NoProfile -File "$(RubidiumRoot)\branding\Generate-VersionHeader.ps1" -RepoRoot "$(RubidiumRoot)" -OutFile "$(IntDir)version.h"</Command>
       <Message>Generating Brand.h and version.h</Message>
     </PreBuildEvent>
     <PostBuildEvent>
