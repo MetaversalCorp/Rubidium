@@ -55,6 +55,7 @@ namespace RUBIDIUM
       void Title  (const std::string& sTitle);
       void Url    (const std::string& sUrl);
       void Reload (bool bReset);
+      bool Passthrough_Toggle ();
 
    private:
       LOGGER*                    m_pLogger;

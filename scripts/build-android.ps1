@@ -327,7 +327,7 @@ function Invoke-AndroidApk {
    $stage = Join-Path $RubidiumOutDir 'apk-stage'
    $outDir = Join-Path $RubidiumInstallDir 'pkg'
    $version = (Get-Content (Join-Path $RubidiumDir 'VERSION') -Raw).Trim()
-   if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+   if (Test-Path $stage) { cmd /c "rmdir /s /q `"$stage`"" }
    New-Item -ItemType Directory -Force -Path `
       (Join-Path $stage 'lib\arm64-v8a'), (Join-Path $stage 'classes'),
       (Join-Path $stage 'java-src'), (Join-Path $stage 'assets\fonts'), $outDir | Out-Null
@@ -381,7 +381,7 @@ function Invoke-AndroidApk {
    & (Get-AndroidBuildTool 'zipalign') -f 4 $unaligned $aligned
    if ($LASTEXITCODE -ne 0) { throw "zipalign failed" }
 
-   $keystore = Join-Path $stage 'debug.keystore'
+   $keystore = Join-Path $RubidiumOutDir 'debug.keystore'
    if (-not (Test-Path $keystore)) {
       & keytool -genkeypair -keystore $keystore -alias androiddebugkey `
          -keyalg RSA -keysize 2048 -validity 10000 `

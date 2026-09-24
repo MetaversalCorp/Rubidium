@@ -425,13 +425,25 @@ public:
             static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Chrome_OnUrlSubmit (sPendingUrl);
 
 #ifdef RUBIDIUM_PLATFORM_QUEST
-         if (m_pSneeze  &&  m_pSneeze->XrRuntime ()  &&  m_pSneeze->XrRuntime ()->ConsumeUrlFocus ())
+         bool bHardwareUrl = false;
+         if (m_pSneeze  &&  m_pSneeze->XrRuntime ())
+            bHardwareUrl = m_pSneeze->XrRuntime ()->ConsumeUrlFocus ();
+         if (bHardwareUrl)
+            CHROME_XR::GetInstance ().ShowToolbar ();
+
+         CHROME_XR::GetInstance ().Tick (m_pSneeze);
+
+         if (bHardwareUrl  ||  CHROME_XR::GetInstance ().ConsumeKeyboard ())
          {
             CHROME_XR::GetInstance ().Focus ();
             AndroidCallActivityVoid ("requestUrlKeyboard");
          }
 
-         CHROME_XR::GetInstance ().Tick (m_pSneeze);
+         if (CHROME_XR::GetInstance ().ConsumePassthrough ()  &&  !m_apAppFrame.empty ())
+         {
+            bool bOn = static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Passthrough_Toggle ();
+            CHROME_XR::GetInstance ().Passthrough (bOn);
+         }
 #endif
 #endif
 
@@ -481,6 +493,7 @@ public:
              || ev.gbutton.button == SDL_GAMEPAD_BUTTON_START
              || ev.gbutton.button == SDL_GAMEPAD_BUTTON_BACK)
             {
+               CHROME_XR::GetInstance ().ShowToolbar ();
                CHROME_XR::GetInstance ().Focus ();
                AndroidCallActivityVoid ("requestUrlKeyboard");
             }

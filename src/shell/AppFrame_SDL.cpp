@@ -410,6 +410,14 @@ void APPFRAME_SDL::Reload (bool bReset)
       m_apTab[m_nTabIx_Active]->Reload (bReset);
 }
 
+bool APPFRAME_SDL::Passthrough_Toggle ()
+{
+   bool bOn = false;
+   if (m_nTabIx_Active >= 0)
+      bOn = m_apTab[m_nTabIx_Active]->Passthrough_Toggle ();
+   return bOn;
+}
+
 void* APPFRAME_SDL::NativeWindow () const
 {
    return m_pWindow;

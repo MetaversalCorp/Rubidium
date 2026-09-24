@@ -38,6 +38,7 @@ public:
    void ProcessInput ()   override;
    void ToggleInspector () override;
    void Reload (bool bReset);
+   bool Passthrough_Toggle ();
 
    // Track viewport movement keys from SDL key events routed to any window in
    // this frame (chrome, canvas, inspector). The canvas child rarely receives

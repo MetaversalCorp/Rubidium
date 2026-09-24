@@ -22,6 +22,10 @@ public:
    void Shutdown ();
    void SetUrl (const std::string& sUrl, bool bSyncIme = true);
    void Focus ();
+   void ShowToolbar ();
+   void Passthrough (bool bOn);
+   bool ConsumeKeyboard ();
+   bool ConsumePassthrough ();
    void Tick (SNEEZE::ENGINE* pEngine);
 
 private:

@@ -357,6 +357,17 @@ void APPFRAMETAB_SDL::Url (const std::string& sUrl)
    }
 }
 
+bool APPFRAMETAB_SDL::Passthrough_Toggle ()
+{
+   bool bOn = false;
+   if (m_pViewport)
+   {
+      bOn = !m_pViewport->Passthrough ();
+      m_pViewport->Passthrough (bOn);
+   }
+   return bOn;
+}
+
 void APPFRAMETAB_SDL::Reload (bool bReset)
 {
    if (m_pViewport  &&  !bReset)
