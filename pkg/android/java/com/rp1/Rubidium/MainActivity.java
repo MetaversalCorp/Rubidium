@@ -1,6 +1,8 @@
 package com.rp1.Rubidium;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Editable;
@@ -34,6 +36,29 @@ public class MainActivity extends SDLActivity {
     private EditText mUrlBar;
     private boolean mImmersive;
     private boolean mSettingText;
+    private boolean mAskedCamera;
+
+    private static final int REQ_CAMERA = 41;
+    private static final String PERM_HEADSET_CAMERA = "horizonos.permission.HEADSET_CAMERA";
+
+    // Quest passthrough cameras stay hidden until both runtime permissions
+    // are granted. Ask once; a denial leaves camera:// black until the user
+    // allows it from the system prompt or headset settings.
+    private void requestHeadsetCamera () {
+        if (!mImmersive || mAskedCamera) {
+            return;
+        }
+        boolean bCamera = checkSelfPermission (Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+        boolean bHeadset = checkSelfPermission (PERM_HEADSET_CAMERA) == PackageManager.PERMISSION_GRANTED;
+        if (bCamera && bHeadset) {
+            return;
+        }
+        mAskedCamera = true;
+        requestPermissions (new String[] {
+            Manifest.permission.CAMERA,
+            PERM_HEADSET_CAMERA
+        }, REQ_CAMERA);
+    }
 
     @Override
     protected void onCreate (Bundle savedInstanceState) {
@@ -98,6 +123,12 @@ public class MainActivity extends SDLActivity {
         if (mLayout != null) {
             mLayout.addView (mUrlBar);
         }
+    }
+
+    @Override
+    protected void onResume () {
+        super.onResume ();
+        requestHeadsetCamera ();
     }
 
     // Called from native to seed / update the bar text from non-UI threads.
