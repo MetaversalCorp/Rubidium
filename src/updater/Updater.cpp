@@ -171,7 +171,8 @@ namespace RUBIDIUM
 UPDATER::UPDATER (IUPDATER* pNotify) : 
    m_bWaitingForCheck (false),
    m_pNotify (pNotify),
-   m_pUpdaterCheck (nullptr)
+   m_pUpdaterCheck (nullptr),
+   m_bCheckFinished (false)
 {
 }
 
@@ -734,10 +735,14 @@ bool UPDATER::SpawnBackgroundCheck (bool bForce, bool bNotifyNoUpdate)
 {
    bool bResult = false;
 
-   if (m_pUpdaterCheck == nullptr)
+   if (m_pUpdaterCheck == nullptr  ||  m_bCheckFinished.load ())
    {
       if (m_threadCheck.joinable ())
          m_threadCheck.join ();
+
+      delete m_pUpdaterCheck;
+      m_pUpdaterCheck = nullptr;
+      m_bCheckFinished.store (false);
 
       m_pUpdaterCheck = new UPDATERCHECK (this, bForce, m_pNotify, bNotifyNoUpdate);
       m_threadCheck = std::thread (&UPDATERCHECK::ThreadLoop, m_pUpdaterCheck);
@@ -750,7 +755,9 @@ bool UPDATER::SpawnBackgroundCheck (bool bForce, bool bNotifyNoUpdate)
 
 void UPDATER::OnCheckComplete ()
 {
-   delete m_pUpdaterCheck;
-   m_pUpdaterCheck = nullptr;
-   m_threadCheck.detach ();
+   // Still on the check thread. Do not detach it and do not delete the
+   // checker: detach of the running thread throws EINVAL on Android and
+   // aborts the process during startup. The destructor, and the next
+   // SpawnBackgroundCheck, join the thread and then delete the checker.
+   m_bCheckFinished.store (true);
 }

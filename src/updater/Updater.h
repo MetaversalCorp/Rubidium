@@ -3,6 +3,7 @@
 #ifndef RUBIDIUM_UPDATER_UPDATER_H
 #define RUBIDIUM_UPDATER_UPDATER_H
 
+#include <atomic>
 #include <string>
 #include <thread>
 
@@ -81,9 +82,10 @@ namespace RUBIDIUM
       virtual std::string SetupExePath () const = 0;
 
    private:
-      UPDATERCHECK*  m_pUpdaterCheck;
-      IUPDATER*      m_pNotify;
-      std::thread    m_threadCheck;
+      UPDATERCHECK*      m_pUpdaterCheck;
+      IUPDATER*          m_pNotify;
+      std::thread        m_threadCheck;
+      std::atomic<bool>  m_bCheckFinished;
 
       std::string    m_sStagedVersion;
       std::string    m_sStagedNotes;
