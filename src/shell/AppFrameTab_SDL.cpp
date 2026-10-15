@@ -2,7 +2,92 @@
 
 #include "AppFrameTab_SDL.h"
 
+#include <cmath>
+
 using namespace RUBIDIUM;
+
+namespace
+{
+   void Quat_LookUp (double dLX, double dLY, double dLZ, double dUX, double dUY, double dUZ, double aQuat[4])
+   {
+      double dL = std::sqrt (dLX * dLX + dLY * dLY + dLZ * dLZ);
+      if (dL < 1e-8)
+      {
+         aQuat[0] = 0.0;
+         aQuat[1] = 0.0;
+         aQuat[2] = 0.0;
+         aQuat[3] = 1.0;
+         return;
+      }
+      dLX /= dL;
+      dLY /= dL;
+      dLZ /= dL;
+
+      double dDot = dUX * dLX + dUY * dLY + dUZ * dLZ;
+      dUX -= dDot * dLX;
+      dUY -= dDot * dLY;
+      dUZ -= dDot * dLZ;
+      double dU = std::sqrt (dUX * dUX + dUY * dUY + dUZ * dUZ);
+      if (dU < 1e-8)
+      {
+         dUX = 0.0;
+         dUY = 0.0;
+         dUZ = 1.0;
+         dU = 1.0;
+      }
+      dUX /= dU;
+      dUY /= dU;
+      dUZ /= dU;
+
+      double dRX = dUY * dLZ - dUZ * dLY;
+      double dRY = dUZ * dLX - dUX * dLZ;
+      double dRZ = dUX * dLY - dUY * dLX;
+
+      double m00 = dLX, m01 = dRX, m02 = dUX;
+      double m10 = dLY, m11 = dRY, m12 = dUY;
+      double m20 = dLZ, m21 = dRZ, m22 = dUZ;
+      double dTrace = m00 + m11 + m22;
+      double dX, dY, dZ, dW;
+
+      if (dTrace > 0.0)
+      {
+         double dS = std::sqrt (dTrace + 1.0) * 2.0;
+         dW = 0.25 * dS;
+         dX = (m21 - m12) / dS;
+         dY = (m02 - m20) / dS;
+         dZ = (m10 - m01) / dS;
+      }
+      else if (m00 > m11  &&  m00 > m22)
+      {
+         double dS = std::sqrt (1.0 + m00 - m11 - m22) * 2.0;
+         dW = (m21 - m12) / dS;
+         dX = 0.25 * dS;
+         dY = (m01 + m10) / dS;
+         dZ = (m02 + m20) / dS;
+      }
+      else if (m11 > m22)
+      {
+         double dS = std::sqrt (1.0 + m11 - m00 - m22) * 2.0;
+         dW = (m02 - m20) / dS;
+         dX = (m01 + m10) / dS;
+         dY = 0.25 * dS;
+         dZ = (m12 + m21) / dS;
+      }
+      else
+      {
+         double dS = std::sqrt (1.0 + m22 - m00 - m11) * 2.0;
+         dW = (m10 - m01) / dS;
+         dX = (m02 + m20) / dS;
+         dY = (m12 + m21) / dS;
+         dZ = 0.25 * dS;
+      }
+
+      aQuat[0] = dX;
+      aQuat[1] = dY;
+      aQuat[2] = dZ;
+      aQuat[3] = dW;
+   }
+}
 
 /*******************************************************************************************************************************
 **                                                      Class: CONTEXT_HOST                                                   **
@@ -363,9 +448,42 @@ bool APPFRAMETAB_SDL::Passthrough_Toggle ()
    if (m_pViewport)
    {
       bOn = !m_pViewport->Passthrough ();
-      m_pViewport->Passthrough (bOn);
+      m_pViewport->Passthrough_User (bOn);
    }
    return bOn;
+}
+
+void APPFRAMETAB_SDL::Passthrough_User (bool bOn)
+{
+   if (m_pViewport)
+      m_pViewport->Passthrough_User (bOn);
+   if (!bOn)
+      Track_Clear ();
+}
+
+void APPFRAMETAB_SDL::Track_Orientation (const float aRowMajor[9])
+{
+   if (!m_pViewport  ||  !m_pViewport->Passthrough ()  ||  !aRowMajor)
+      return;
+
+   double dLookX = -static_cast<double> (aRowMajor[2]);
+   double dLookY = -static_cast<double> (aRowMajor[5]);
+   double dLookZ = -static_cast<double> (aRowMajor[8]);
+   double dUpX   =  static_cast<double> (aRowMajor[1]);
+   double dUpY   =  static_cast<double> (aRowMajor[4]);
+   double dUpZ   =  static_cast<double> (aRowMajor[7]);
+   double aQuat[4];
+   Quat_LookUp (dLookX, dLookY, dLookZ, dUpX, dUpY, dUpZ, aQuat);
+   m_pViewport->Orientation_Set (aQuat);
+}
+
+void APPFRAMETAB_SDL::Track_Clear ()
+{
+   if (m_pViewport)
+   {
+      m_pViewport->Orientation_Clear ();
+      m_pViewport->Camera_Deactivate ();
+   }
 }
 
 void APPFRAMETAB_SDL::Reload (bool bReset)

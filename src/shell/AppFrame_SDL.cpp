@@ -7,6 +7,7 @@
 
 #include "AppFrame_SDL.h"
 #include "canvas/Canvas.h"
+#include "vps/Vps.h"
 #include "version.h"
 #include "Brand.h"
 
@@ -418,6 +419,24 @@ bool APPFRAME_SDL::Passthrough_Toggle ()
    return bOn;
 }
 
+void APPFRAME_SDL::Passthrough_User (bool bOn)
+{
+   if (m_nTabIx_Active >= 0)
+      m_apTab[m_nTabIx_Active]->Passthrough_User (bOn);
+}
+
+void APPFRAME_SDL::Track_Orientation (const float aRowMajor[9])
+{
+   if (m_nTabIx_Active >= 0)
+      m_apTab[m_nTabIx_Active]->Track_Orientation (aRowMajor);
+}
+
+void APPFRAME_SDL::Track_Clear ()
+{
+   if (m_nTabIx_Active >= 0)
+      m_apTab[m_nTabIx_Active]->Track_Clear ();
+}
+
 void* APPFRAME_SDL::NativeWindow () const
 {
    return m_pWindow;
@@ -442,9 +461,42 @@ void APPFRAME_SDL::Chrome_OnTabAdd ()
    FrameTabAdd ();
 }
 
+static bool Is_Vps_Config (const std::string& sUrl)
+{
+   std::string sPath = sUrl;
+   std::string::size_type nQuery = sPath.find ('?');
+   bool bConfig = false;
+
+   if (nQuery != std::string::npos)
+      sPath.resize (nQuery);
+   while (!sPath.empty ()  &&  (sPath.back () == '/'))
+      sPath.pop_back ();
+
+   const std::string sTail = "vps.json";
+   if (sPath.size () >= sTail.size ())
+   {
+      bConfig = true;
+      for (size_t n = 0; n < sTail.size (); ++n)
+      {
+         char cPath = sPath[sPath.size () - sTail.size () + n];
+         char cTail = sTail[n];
+         if (cPath >= 'A'  &&  cPath <= 'Z')
+            cPath = static_cast<char> (cPath - 'A' + 'a');
+         if (cPath != cTail)
+            bConfig = false;
+      }
+   }
+
+   return bConfig;
+}
+
 void APPFRAME_SDL::Chrome_OnUrlSubmit (const std::string& sUrl)
 {
-   if (m_nTabIx_Active >= 0)
+   if (Is_Vps_Config (sUrl)  &&  m_pSneeze  &&  m_pSneeze->Vps ())
+   {
+      m_pSneeze->Vps ()->Load_Url (sUrl);
+   }
+   else if (m_nTabIx_Active >= 0)
    {
       APPNATIVE::GetInstance ()->UrlHistory_Add (sUrl);
       m_apTab[m_nTabIx_Active]->Url (sUrl);

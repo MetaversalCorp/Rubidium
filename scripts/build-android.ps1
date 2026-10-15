@@ -339,6 +339,10 @@ function Invoke-AndroidApk {
    Copy-Item $halogenSo (Join-Path $stage 'lib\arm64-v8a\libanari_library_halogen.so')
    Copy-Item $libcxx.FullName (Join-Path $stage 'lib\arm64-v8a\libc++_shared.so')
    Copy-Item (Join-Path $fontsSrc '*') (Join-Path $stage 'assets\fonts') -Recurse -Force
+   $vpsJson = Join-Path $pkg 'vps.json'
+   if (Test-Path $vpsJson) {
+      Copy-Item $vpsJson (Join-Path $stage 'assets\vps.json') -Force
+   }
 
    $sdlJava = Join-Path $RubidiumDir 'deps\repos\SDL3\android-project\app\src\main\java'
    if (-not (Test-Path $sdlJava)) { throw "SDL Java not found at $sdlJava" }

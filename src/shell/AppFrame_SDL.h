@@ -39,6 +39,9 @@ public:
    void ToggleInspector () override;
    void Reload (bool bReset);
    bool Passthrough_Toggle ();
+   void Passthrough_User (bool bOn);
+   void Track_Orientation (const float aRowMajor[9]);
+   void Track_Clear ();
 
    // Track viewport movement keys from SDL key events routed to any window in
    // this frame (chrome, canvas, inspector). The canvas child rarely receives

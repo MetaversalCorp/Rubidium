@@ -27,6 +27,7 @@
 #ifdef __ANDROID__
 #include "xr/XrRuntime.h"
 #include "shell/ChromeXr.h"
+#include "vps/Vps.h"
 #include <SDL3/SDL_system.h>
 #include <jni.h>
 #include <fstream>
@@ -187,6 +188,100 @@ namespace
    std::mutex  g_mxPendingUrl;
    std::string g_sPendingUrl;
    bool        g_bPendingUrl = false;
+
+   std::mutex  g_mxPendingMap;
+   std::string g_sPendingMap;
+   bool        g_bPendingMap = false;
+   bool        g_bMapPickerShown = false;
+   std::mutex  g_mxPendingAr;
+   bool        g_bPendingAr = false;
+   bool        g_bPendingArOn = false;
+   std::mutex  g_mxPendingSkip;
+   bool        g_bPendingSkip = false;
+   std::mutex  g_mxRot;
+   bool        g_bRot = false;
+   float       g_aRot[9] = { 1.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f };
+
+   void AndroidShowMapPicker (const std::vector<SNEEZE::DEP::VPS::MAP>& aMap)
+   {
+      JNIEnv* env = static_cast<JNIEnv*> (SDL_GetAndroidJNIEnv ());
+      jobject activity = static_cast<jobject> (SDL_GetAndroidActivity ());
+
+      if (env  &&  activity  &&  !aMap.empty ())
+      {
+         jclass cls = env->GetObjectClass (activity);
+         jmethodID mid = env->GetMethodID (cls, "showMapPicker", "([Ljava/lang/String;[Ljava/lang/String;)V");
+         jclass clsString = env->FindClass ("java/lang/String");
+         jobjectArray jLabel = env->NewObjectArray (static_cast<jsize> (aMap.size ()), clsString, nullptr);
+         jobjectArray jId = env->NewObjectArray (static_cast<jsize> (aMap.size ()), clsString, nullptr);
+
+         for (size_t nMap = 0; nMap < aMap.size (); ++nMap)
+         {
+            std::string sLabel = aMap[nMap].sName.empty () ? ("Unnamed [" + aMap[nMap].sId + "]") : aMap[nMap].sName;
+            jstring jLabelOne = env->NewStringUTF (sLabel.c_str ());
+            jstring jIdOne = env->NewStringUTF (aMap[nMap].sId.c_str ());
+            env->SetObjectArrayElement (jLabel, static_cast<jsize> (nMap), jLabelOne);
+            env->SetObjectArrayElement (jId, static_cast<jsize> (nMap), jIdOne);
+            env->DeleteLocalRef (jLabelOne);
+            env->DeleteLocalRef (jIdOne);
+         }
+
+         if (mid)
+            env->CallVoidMethod (activity, mid, jLabel, jId);
+
+         env->DeleteLocalRef (jLabel);
+         env->DeleteLocalRef (jId);
+         env->DeleteLocalRef (clsString);
+         env->DeleteLocalRef (cls);
+         env->DeleteLocalRef (activity);
+      }
+   }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeArSet (JNIEnv* /*env*/, jclass /*cls*/, jboolean bOn)
+{
+   std::lock_guard<std::mutex> lock (g_mxPendingAr);
+   g_bPendingAr = true;
+   g_bPendingArOn = (bOn == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeVpsSkip (JNIEnv* /*env*/, jclass /*cls*/)
+{
+   std::lock_guard<std::mutex> lock (g_mxPendingSkip);
+   g_bPendingSkip = true;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeArRotation (JNIEnv* env, jclass /*cls*/, jfloatArray jR)
+{
+   if (env  &&  jR  &&  env->GetArrayLength (jR) >= 9)
+   {
+      jfloat aR[9];
+      env->GetFloatArrayRegion (jR, 0, 9, aR);
+      std::lock_guard<std::mutex> lock (g_mxRot);
+      for (int i = 0; i < 9; i++)
+         g_aRot[i] = aR[i];
+      g_bRot = true;
+   }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_rp1_Rubidium_MainActivity_nativeMapSelected (JNIEnv* env, jclass /*cls*/, jstring jId)
+{
+   if (jId)
+   {
+      const char* pszId = env->GetStringUTFChars (jId, nullptr);
+
+      if (pszId)
+      {
+         std::lock_guard<std::mutex> lock (g_mxPendingMap);
+         g_sPendingMap = pszId;
+         g_bPendingMap = true;
+         env->ReleaseStringUTFChars (jId, pszId);
+      }
+   }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -422,7 +517,91 @@ public:
          }
 
          if (bPendingUrl  &&  !m_apAppFrame.empty ())
+         {
+            if (sPendingUrl.find ("vps.json") != std::string::npos)
+               g_bMapPickerShown = false;
             static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Chrome_OnUrlSubmit (sPendingUrl);
+         }
+
+         std::string sPendingMap;
+         bool        bPendingMap = false;
+
+         {
+            std::lock_guard<std::mutex> lock (g_mxPendingMap);
+
+            if (g_bPendingMap)
+            {
+               sPendingMap   = g_sPendingMap;
+               g_bPendingMap = false;
+               bPendingMap   = true;
+            }
+         }
+
+         if (bPendingMap  &&  m_pSneeze  &&  m_pSneeze->Vps ())
+            m_pSneeze->Vps ()->Map_Select (sPendingMap);
+
+         bool bPendingAr = false;
+         bool bPendingArOn = false;
+         {
+            std::lock_guard<std::mutex> lock (g_mxPendingAr);
+            if (g_bPendingAr)
+            {
+               g_bPendingAr = false;
+               bPendingAr = true;
+               bPendingArOn = g_bPendingArOn;
+            }
+         }
+
+         if (bPendingAr  &&  !m_apAppFrame.empty ())
+            static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Passthrough_User (bPendingArOn);
+
+         bool bPendingSkip = false;
+         {
+            std::lock_guard<std::mutex> lock (g_mxPendingSkip);
+            if (g_bPendingSkip)
+            {
+               g_bPendingSkip = false;
+               bPendingSkip = true;
+            }
+         }
+
+         if (bPendingSkip)
+         {
+            if (m_pSneeze  &&  m_pSneeze->Vps ())
+               m_pSneeze->Vps ()->Skip ();
+            if (!m_apAppFrame.empty ())
+               static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Track_Clear ();
+         }
+
+         float aRot[9];
+         bool  bRot = false;
+         {
+            std::lock_guard<std::mutex> lock (g_mxRot);
+            if (g_bRot)
+            {
+               for (int i = 0; i < 9; i++)
+                  aRot[i] = g_aRot[i];
+               bRot = true;
+            }
+         }
+
+         bool bVpsOwns = false;
+         if (m_pSneeze  &&  m_pSneeze->Vps ())
+            bVpsOwns = !m_pSneeze->Vps ()->IsSkipped ()  &&  !m_pSneeze->Vps ()->Map_Selected ().empty ();
+
+         if (bRot  &&  !bVpsOwns  &&  !m_apAppFrame.empty ())
+            static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Track_Orientation (aRot);
+
+         if (!g_bMapPickerShown  &&  m_pSneeze  &&  m_pSneeze->Vps ()  &&  m_pSneeze->Vps ()->Maps_Ready ())
+         {
+            std::vector<SNEEZE::DEP::VPS::MAP> aMap;
+            m_pSneeze->Vps ()->Maps (aMap);
+            if (!aMap.empty ())
+            {
+               g_bMapPickerShown = true;
+               AndroidShowMapPicker (aMap);
+            }
+         }
 
 #ifdef RUBIDIUM_PLATFORM_QUEST
          bool bHardwareUrl = false;
@@ -699,6 +878,10 @@ public:
       if (SDL_Init (nSdlFlags))
       {
          OnAfterSDLInit (m_pApp->Logger ());
+
+#ifdef __ANDROID__
+         ExtractAndroidAsset ("vps.json", m_pApp->sAppDataPath () + "/vps.json");
+#endif
 
          m_pSneeze = new SNEEZE::ENGINE (m_pApp);
 

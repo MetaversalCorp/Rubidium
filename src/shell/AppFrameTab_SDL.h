@@ -56,6 +56,12 @@ namespace RUBIDIUM
       void Url    (const std::string& sUrl);
       void Reload (bool bReset);
       bool Passthrough_Toggle ();
+      void Passthrough_User (bool bOn);
+
+      // Phone AR. aRowMajor is the display-to-world rotation from the rotation
+      // vector. Position is sampled once from the orbit eye.
+      void Track_Orientation (const float aRowMajor[9]);
+      void Track_Clear ();
 
    private:
       LOGGER*                    m_pLogger;
