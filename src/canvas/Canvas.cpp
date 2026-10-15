@@ -22,6 +22,9 @@ CANVAS::CANVAS (LOGGER* pLogger, std::string sName) :
    m_nWidth_Pending (0), m_nHeight_Pending (0),
    m_nChildX (0), m_nChildY (0), m_nChildW (-1), m_nChildH (-1),
    m_bPrevPlus (false), m_bPrevMinus (false), m_bPrevSlash (false)
+#ifdef TEMPORARY_DIGIT_KEYS
+   , m_nDigitsPrev (0)
+#endif
 {
 }
 
@@ -272,6 +275,49 @@ void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
    pViewport->Input_Mouse     (nMouseDX, nMouseDY, dScrollY, bMouseLeft, bMouseRight);
    pViewport->Input_Key       (bKeySpace, bKeyPlus, bKeyMinus, bKeyA, bKeyS, bKeyD, bKeyW, bKeyCtrl);
    pViewport->Input_MoveScale (pApp->MovementScale ());
+
+#ifdef TEMPORARY_DIGIT_KEYS
+   unsigned nDigits = 0;
+
+   if (bCaptureKeys)
+   {
+#ifdef _WIN32
+      for (int nDigit = 0; nDigit <= 9; nDigit++)
+      {
+         if (((GetAsyncKeyState ('0' + nDigit) & 0x8000) != 0)
+             ||  ((GetAsyncKeyState (VK_NUMPAD0 + nDigit) & 0x8000) != 0))
+            nDigits |= (1u << nDigit);
+      }
+#else
+      if (!APPNATIVE::GetInstance ()->MovementKeysSuppressed ())
+      {
+         const bool* aKeys = SDL_GetKeyboardState (nullptr);
+         static const SDL_Scancode aMain[10] =
+         {
+            SDL_SCANCODE_0, SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4,
+            SDL_SCANCODE_5, SDL_SCANCODE_6, SDL_SCANCODE_7, SDL_SCANCODE_8, SDL_SCANCODE_9
+         };
+         static const SDL_Scancode aPad[10] =
+         {
+            SDL_SCANCODE_KP_0, SDL_SCANCODE_KP_1, SDL_SCANCODE_KP_2, SDL_SCANCODE_KP_3, SDL_SCANCODE_KP_4,
+            SDL_SCANCODE_KP_5, SDL_SCANCODE_KP_6, SDL_SCANCODE_KP_7, SDL_SCANCODE_KP_8, SDL_SCANCODE_KP_9
+         };
+
+         for (int nDigit = 0; nDigit <= 9; nDigit++)
+         {
+            if (aKeys[aMain[nDigit]]  ||  aKeys[aPad[nDigit]])
+               nDigits |= (1u << nDigit);
+         }
+      }
+#endif
+   }
+
+   unsigned nPressed = nDigits & ~m_nDigitsPrev;
+   m_nDigitsPrev = nDigits;
+
+   if (nPressed)
+      pViewport->Input_Digit (nPressed);
+#endif
 
    nMouseDX = 0;
    nMouseDY = 0;

@@ -239,5 +239,4 @@ void LOGGER::Log (eLOGLEVEL Level, std::string sModule, std::string sMessage)
       m_pImpl->Log (Level, sModule, sMessage);
 }
 
-
 /******************************************************************************************************************************/

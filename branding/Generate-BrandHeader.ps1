@@ -2,6 +2,9 @@
 #
 # Substitutes branding/Brand.h.in from branding/Product.cmake into -OutFile.
 # Used by the hand-maintained MSVC PreBuildEvent (CMake uses configure_file).
+# Writes the output only when the generated text differs, so a Sneeze rebuild
+# (which still runs this PreBuildEvent) does not bump the header timestamp
+# and force Brand.h consumers to recompile.
 
 param (
    [Parameter (Mandatory = $true)]
@@ -37,4 +40,15 @@ if (-not (Test-Path $outDir))
    New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 }
 
-[IO.File]::WriteAllText($OutFile, $header)
+$bWrite = $true
+if (Test-Path $OutFile)
+{
+   if ([IO.File]::ReadAllText($OutFile) -eq $header)
+   {
+      $bWrite = $false
+   }
+}
+if ($bWrite)
+{
+   [IO.File]::WriteAllText($OutFile, $header)
+}

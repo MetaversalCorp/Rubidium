@@ -162,8 +162,11 @@ bool URL_BAR_RML::Initialize (SDL_Window* pParentWindow, SDL_Renderer* pParentRe
       }
    }
 
-   m_pImpl->pContext = Rml::CreateContext ("urlbar",
-      Rml::Vector2i (nWidth, kBarHeight), m_pImpl->pRmlRenderer);
+   {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+      m_pImpl->pContext = Rml::CreateContext ("urlbar",
+         Rml::Vector2i (nWidth, kBarHeight), m_pImpl->pRmlRenderer);
+   }
 
    if (m_pImpl->pContext && !sFamily.empty ())
    {
@@ -218,6 +221,8 @@ void URL_BAR_RML::Shutdown ()
 
    if (m_pImpl->pContext)
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       Rml::RemoveContext ("urlbar");
       m_pImpl->pContext  = nullptr;
       m_pImpl->pDocument = nullptr;
@@ -250,6 +255,8 @@ void URL_BAR_RML::Render (SDL_Renderer* pRenderer)
    SDL_GetRenderOutputSize (pRenderer, &nW, &nH);
    SDL_Rect rcBar { 0, 0, nW, kBarHeight };
    SDL_SetRenderViewport (pRenderer, &rcBar);
+
+   SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
 
    if (m_pImpl->nWidth != nW)
    {

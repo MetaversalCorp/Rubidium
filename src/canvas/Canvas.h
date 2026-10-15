@@ -3,6 +3,11 @@
 #ifndef RUBIDIUM_CANVAS_CANVAS_H
 #define RUBIDIUM_CANVAS_CANVAS_H
 
+// REMOVE THIS -- temporary digit-key Notify (VIEWPORT method 60).
+#ifndef TEMPORARY_DIGIT_KEYS
+#define TEMPORARY_DIGIT_KEYS
+#endif
+
 namespace RUBIDIUM {
 
 class CANVAS : public ISDLWINDOW
@@ -115,6 +120,10 @@ private:
    bool           m_bPrevPlus;
    bool           m_bPrevMinus;
    bool           m_bPrevSlash;
+
+#ifdef TEMPORARY_DIGIT_KEYS
+   unsigned       m_nDigitsPrev;
+#endif
 };
 
 } // namespace RUBIDIUM

@@ -141,7 +141,10 @@ public:
             m_pRmlRenderer->SetClearColor (0xff, 0xff, 0xff);
 
             std::string sContextName = "rmlui_sdl_" + std::to_string (s_nInstanceCount++);
-            m_pRmlContext = Rml::CreateContext (sContextName, Rml::Vector2i (nWidth, nHeight), m_pRmlRenderer);
+            {
+               SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+               m_pRmlContext = Rml::CreateContext (sContextName, Rml::Vector2i (nWidth, nHeight), m_pRmlRenderer);
+            }
 
             if (m_pRmlContext)
             {
@@ -156,13 +159,17 @@ public:
 
    ~Impl ()
    {
-      if (m_pRmlContext)
       {
-         Rml::RemoveContext (m_pRmlContext->GetName ());
-         m_pRmlContext = nullptr;
-      }
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
 
-      Rml::ReleaseRenderManagers ();
+         if (m_pRmlContext)
+         {
+            Rml::RemoveContext (m_pRmlContext->GetName ());
+            m_pRmlContext = nullptr;
+         }
+
+         Rml::ReleaseRenderManagers ();
+      }
 
       if (m_pRmlRenderer)
       {
@@ -256,6 +263,8 @@ public:
 
       if (bCanRender)
       {
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
          SyncWindowDpi ();
 
          int nWindowW = 0;

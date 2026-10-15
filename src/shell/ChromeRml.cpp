@@ -571,6 +571,8 @@ public:
 
    ~Impl ()
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       SetPopupMenuOpen (false);
       SetUrlDropOpen (false);
 
@@ -780,7 +782,10 @@ public:
             m_pRmlRenderer->SetClearColor (0xde, 0xe1, 0xe6);
 
             std::string sContextName = "chrome_rml_" + std::to_string (s_nInstanceCount++);
-            m_pRmlContext = Rml::CreateContext (sContextName, Rml::Vector2i (nWidth, nHeight), m_pRmlRenderer);
+            {
+               SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+               m_pRmlContext = Rml::CreateContext (sContextName, Rml::Vector2i (nWidth, nHeight), m_pRmlRenderer);
+            }
 
             if (m_pRmlContext)
             {
@@ -996,7 +1001,10 @@ public:
             m_pMenuRmlRenderer->SetClearColor (0xff, 0xff, 0xff);
 
             std::string sContextName = "chrome_menu_" + std::to_string (s_nInstanceCount);
-            m_pMenuContext = Rml::CreateContext (sContextName, Rml::Vector2i (nMenuW, nMenuH), m_pMenuRmlRenderer);
+            {
+               SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+               m_pMenuContext = Rml::CreateContext (sContextName, Rml::Vector2i (nMenuW, nMenuH), m_pMenuRmlRenderer);
+            }
 
             if (m_pMenuContext)
             {
@@ -1057,7 +1065,10 @@ public:
 
             float       dDisplayScale = SDL_GetWindowDisplayScale (m_pSDLWindow);
             std::string sContextName  = "chrome_url_" + std::to_string (s_nInstanceCount);
-            m_pUrlContext = Rml::CreateContext (sContextName, Rml::Vector2i (200, 200), m_pUrlRmlRenderer);
+            {
+               SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+               m_pUrlContext = Rml::CreateContext (sContextName, Rml::Vector2i (200, 200), m_pUrlRmlRenderer);
+            }
 
             if (m_pUrlContext)
             {
@@ -1154,6 +1165,8 @@ public:
    {
       if (m_pUrlContext  &&  m_pUrlRenderer  &&  m_pUrlRmlRenderer)
       {
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
          m_pUrlContext->Update ();
 
          m_pUrlRmlRenderer->BeginFrame ();
@@ -1261,6 +1274,8 @@ public:
    {
       if (m_pMenuContext  &&  m_pMenuRenderer  &&  m_pMenuRmlRenderer)
       {
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
          m_pMenuContext->Update ();
 
          m_pMenuRmlRenderer->BeginFrame ();
@@ -1610,6 +1625,8 @@ public:
 
    void Render ()
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       SyncDisplayScale ();
 
       int nWindowW = 0, nWindowH = 0;
