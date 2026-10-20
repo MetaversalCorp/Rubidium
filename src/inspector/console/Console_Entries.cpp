@@ -118,7 +118,7 @@ void IW_CONSOLE_ENTRIES::AddEntry (std::shared_ptr<const SNEEZE::ENTRY> pEntryPt
 
    std::string sRml;
    sRml += "<div class=\"" + sClass + "\">";
-   sRml += "<div class=\"files-cell\" style=\"width: 100%;\">" + sMessage + "</div>";
+   sRml += "<div class=\"files-cell\" style=\"width: 100%;\">" + UTILS::Escape (sMessage, false) + "</div>";
    sRml += "</div>";
 
    Rml::ElementPtr pRow = m_pRows->GetOwnerDocument ()->CreateElement ("div");
