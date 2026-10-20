@@ -188,24 +188,41 @@ void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
    // focus -- SDL_GetKeyboardState never sees A/S/D/W. Poll Win32 async key
    // state instead. On SDL platforms (Linux/macOS) poll SDL_GetKeyboardState
    // the same way -- the chrome window holds focus but SDL still tracks physical
-   // key state application-wide. Suppress while a text field is capturing input
-   // so the URL bar can type.
+   // key state application-wide. Both polls are session-wide, so require this
+   // frame to be foreground (Win32) or an SDL window to hold keyboard focus.
+   // Suppress while a text field is capturing input so the URL bar can type.
    bool bCaptureKeys = true;
 
 #ifdef _WIN32
    {
-      HWND hFocus = GetFocus ();
-      if (hFocus)
+      HWND hCanvas     = static_cast<HWND> (NativeWindowHandle ());
+      HWND hRoot       = hCanvas ? GetAncestor (hCanvas, GA_ROOT) : nullptr;
+      HWND hForeground = GetForegroundWindow ();
+
+      if (hRoot  &&  (hForeground == hRoot  ||  IsChild (hRoot, hForeground)))
       {
-         wchar_t wszClass[64] = {};
-         if (GetClassNameW (hFocus, wszClass, 64) > 0
-             &&  _wcsicmp (wszClass, L"Edit") == 0)
-            bCaptureKeys = false;
+         HWND hFocus = GetFocus ();
+         if (hFocus)
+         {
+            wchar_t wszClass[64] = {};
+            if (GetClassNameW (hFocus, wszClass, 64) > 0
+                &&  _wcsicmp (wszClass, L"Edit") == 0)
+               bCaptureKeys = false;
+         }
+      }
+      else
+      {
+         bCaptureKeys = false;
       }
    }
+#else
+   if (!SDL_GetKeyboardFocus ()  ||  APPNATIVE::GetInstance ()->MovementKeysSuppressed ())
+      bCaptureKeys = false;
+#endif
 
    if (bCaptureKeys)
    {
+#ifdef _WIN32
       bKeyA     = (GetAsyncKeyState ('A') & 0x8000) != 0;
       bKeyS     = (GetAsyncKeyState ('S') & 0x8000) != 0;
       bKeyD     = (GetAsyncKeyState ('D') & 0x8000) != 0;
@@ -215,34 +232,7 @@ void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
       bKeyPlus  = ((GetAsyncKeyState (VK_OEM_PLUS)  & 0x8000) != 0)  ||  ((GetAsyncKeyState (VK_ADD)      & 0x8000) != 0);
       bKeyMinus = ((GetAsyncKeyState (VK_OEM_MINUS) & 0x8000) != 0)  ||  ((GetAsyncKeyState (VK_SUBTRACT) & 0x8000) != 0);
       bKeySlash = ((GetAsyncKeyState (VK_OEM_2)     & 0x8000) != 0)  ||  ((GetAsyncKeyState (VK_DIVIDE)   & 0x8000) != 0);
-   }
-   else
-   {
-      bKeyA     = false;
-      bKeyS     = false;
-      bKeyD     = false;
-      bKeyW     = false;
-      bKeySpace = false;
-      bKeyCtrl  = false;
-      bKeyPlus  = false;
-      bKeyMinus = false;
-      bKeySlash = false;
-   }
 #else
-   if (APPNATIVE::GetInstance ()->MovementKeysSuppressed ())
-   {
-      bKeyA     = false;
-      bKeyS     = false;
-      bKeyD     = false;
-      bKeyW     = false;
-      bKeySpace = false;
-      bKeyCtrl  = false;
-      bKeyPlus  = false;
-      bKeyMinus = false;
-      bKeySlash = false;
-   }
-   else
-   {
       const bool* aKeys = SDL_GetKeyboardState (nullptr);
 
       bKeyA     = aKeys[SDL_SCANCODE_A];
@@ -254,8 +244,20 @@ void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
       bKeyPlus  = aKeys[SDL_SCANCODE_EQUALS]  ||  aKeys[SDL_SCANCODE_KP_PLUS];
       bKeyMinus = aKeys[SDL_SCANCODE_MINUS]   ||  aKeys[SDL_SCANCODE_KP_MINUS];
       bKeySlash = aKeys[SDL_SCANCODE_SLASH]   ||  aKeys[SDL_SCANCODE_KP_DIVIDE];
-   }
 #endif
+   }
+   else
+   {
+      bKeyA     = false;
+      bKeyS     = false;
+      bKeyD     = false;
+      bKeyW     = false;
+      bKeySpace = false;
+      bKeyCtrl  = false;
+      bKeyPlus  = false;
+      bKeyMinus = false;
+      bKeySlash = false;
+   }
 
    // Movement speed: '+' steps the WASD travel distance up one notch, '-' down,
    // '/' resets to the default. Rising-edge latched so a held key advances one
