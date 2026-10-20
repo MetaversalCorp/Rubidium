@@ -585,11 +585,7 @@ public:
             }
          }
 
-         bool bVpsOwns = false;
-         if (m_pSneeze  &&  m_pSneeze->Vps ())
-            bVpsOwns = !m_pSneeze->Vps ()->IsSkipped ()  &&  !m_pSneeze->Vps ()->Map_Selected ().empty ();
-
-         if (bRot  &&  !bVpsOwns  &&  !m_apAppFrame.empty ())
+         if (bRot  &&  !m_apAppFrame.empty ())
             static_cast<APPFRAME_SDL*> (m_apAppFrame.front ())->Track_Orientation (aRot);
 
          if (!g_bMapPickerShown  &&  m_pSneeze  &&  m_pSneeze->Vps ()  &&  m_pSneeze->Vps ()->Maps_Ready ())
