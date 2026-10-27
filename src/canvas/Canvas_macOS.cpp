@@ -2,12 +2,11 @@
 
 // Apple (macOS + iOS) native canvas implementation.
 //
-// macOS: the canvas owns its own borderless SDL Metal window, attached as a
-// Cocoa child of the chrome window via SDL_SetWindowParent and docked below the
-// chrome strip. This mirrors the Linux X11 reparent path (Canvas_Linux.cpp)
-// and the Win32 WS_CHILD path -- a two-window browser frame where the chrome
-// (RmlUi tab strip + URL bar) sits on top and the Filament canvas fills the
-// content region. Both the chrome and this canvas are non-HiDPI SDL windows,
+// macOS: the canvas owns its own borderless SDL Metal window, docked below the
+// chrome strip in screen space. It is not a Cocoa child window: Metal's
+// presentDrawable does not show up in an addChildWindow surface, so the child
+// stays black. Canvas_OrderAbove keeps it above the chrome without activating
+// it. Both the chrome and this canvas are non-HiDPI SDL windows,
 // so window points equal pixels and the docking geometry stays in one unit.
 // pParentHandle is the chrome's SDL_Window* (APPFRAME_SDL::ParentNativeHandle).
 //
@@ -29,6 +28,7 @@ static const char* kMetalLayerProperty = "rubidium.metal.layer";
 namespace RUBIDIUM
 {
    void Canvas_InstallMetalView (SDL_Window* pWindow, void* pMetalView, int nWidth, int nHeight);
+   void Canvas_OrderAbove (SDL_Window* pWindow, SDL_Window* pParent);
    void Canvas_SetNativeVisible (SDL_Window* pWindow, bool bVisible);
 }
 #endif
@@ -69,17 +69,6 @@ bool CANVAS_NATIVE::Initialize (void* pParentHandle, int nWidth, int nHeight)
 
    if (m_pWindow)
    {
-#if defined(RUBIDIUM_PLATFORM_MACOS)
-      // Attach as a Cocoa child of the chrome window: stays ordered above the
-      // chrome and moves with it. SDL_SetWindowParent maps to [parent
-      // addChildWindow:child ...] on macOS -- the analogue of XReparentWindow.
-      if (m_pParentWindow)
-      {
-         if (!SDL_SetWindowParent (m_pWindow, m_pParentWindow))
-            m_pLogger->Log (LOGGER::kLOGLEVEL_Warning, "CANVAS", std::string ("SDL_SetWindowParent failed: ") + SDL_GetError ());
-      }
-#endif
-
       m_pMetalView = SDL_Metal_CreateView (m_pWindow);
       if (m_pMetalView)
       {
@@ -110,23 +99,20 @@ void CANVAS_NATIVE::SetVisible (bool bVisible)
    {
       if (bVisible)
       {
-         if (m_bOwnsWindow && m_pParentWindow)
-            SDL_SetWindowParent (m_pWindow, m_pParentWindow);
-
          SDL_ShowWindow (m_pWindow);
          ApplyChildGeometry ();
          Canvas_SetNativeVisible (m_pWindow, true);
-         SDL_RaiseWindow (m_pWindow);
 #if defined(RUBIDIUM_PLATFORM_MACOS)
          Canvas_InstallMetalView (m_pWindow, m_pMetalView, m_nChildW, m_nChildH);
+         Canvas_OrderAbove (m_pWindow, m_pParentWindow);
+#else
+         SDL_RaiseWindow (m_pWindow);
 #endif
       }
       else
       {
-         // orderOut is required for reparented Metal children — SDL_HideWindow
-         // alone can leave the child visible when the parent hides. Keep the
-         // Cocoa parent link so the Metal layer survives the next show (detaching
-         // with SDL_SetWindowParent(nullptr) broke GLB preview on re-open).
+         // orderOut is required — SDL_HideWindow alone can leave the borderless
+         // canvas visible after the chrome hides.
          Canvas_SetNativeVisible (m_pWindow, false);
          SDL_HideWindow (m_pWindow);
       }
@@ -152,6 +138,7 @@ void CANVAS_NATIVE::ApplyChildGeometry ()
       // After the window is mapped and sized. Filament reads the content view's
       // layer when it creates the swapchain, which happens after the first Show.
       Canvas_InstallMetalView (m_pWindow, m_pMetalView, m_nChildW, m_nChildH);
+      Canvas_OrderAbove (m_pWindow, m_pParentWindow);
 #endif
    }
 }

@@ -5,15 +5,13 @@
 
 // macOS native canvas implementation.
 //
-// Mirrors the Linux two-window model: the canvas owns its own borderless SDL
-// Metal window which is attached as a Cocoa child of the chrome window (via
-// SDL_SetWindowParent) and docked in the region below the chrome strip. Cocoa
-// child windows move with their parent and stay ordered above it, so the
-// chrome (tab strip + URL bar) and the Filament canvas read as one browser
-// window -- the macOS analogue of the X11 XReparentWindow path. Creates an SDL
-// Metal view to provide the CAMetalLayer that Filament's Metal backend
-// requires. This file is compiled on macOS only; CMake marks it
-// HEADER_FILE_ONLY on other platforms.
+// The canvas owns its own borderless SDL Metal window, docked in screen space
+// below the chrome strip. It is not a Cocoa child window: Metal's present does
+// not show up through addChildWindow. Canvas_OrderAbove keeps it above the
+// chrome without activating it, and the frame re-docks it when the chrome
+// finishes a move. Creates an SDL Metal view to provide the CAMetalLayer that
+// Filament's Metal backend requires. This file is compiled on macOS only;
+// CMake marks it HEADER_FILE_ONLY on other platforms.
 
 struct SDL_Window;
 

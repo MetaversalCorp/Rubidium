@@ -4,10 +4,11 @@
 //
 // SDL_Metal_CreateView adds the CAMetalLayer as a subview of SDL's content
 // view, sized with contentView.frame (origin in the frame view, not the
-// content view). That content view paints itself black, and on a Cocoa child
-// window the subview's present never becomes the surface on screen. Install
-// the Metal view as the window's content view, then size its drawable to the
-// docked window, once the window is shown and on every dock.
+// content view). That content view paints itself black. Install the Metal
+// view as the window's content view, then size its drawable to the docked
+// window, once the window is shown and on every dock. The canvas is a
+// top-level window: order it above the chrome without making it key, because
+// a Cocoa child window never shows a Metal present.
 //
 // Filament's Metal backend reports isSRGBSwapChainSupported() == false, so it
 // applies the sRGB transfer function in its post-processing pass and writes the
@@ -75,6 +76,24 @@ namespace RUBIDIUM
             pMetalLayer.drawableSize = CGSizeMake ((CGFloat) nWidth, (CGFloat) nHeight);
 
             SDL_SetPointerProperty (SDL_GetWindowProperties (pWindow), "rubidium.metal.layer", (__bridge void*) pMetalLayer);
+         }
+      }
+   }
+
+   void Canvas_OrderAbove (SDL_Window* pWindow, SDL_Window* pParent)
+   {
+      if (pWindow != nullptr  &&  pParent != nullptr)
+      {
+         id pChild = (__bridge id) SDL_GetPointerProperty (
+            SDL_GetWindowProperties (pWindow), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+         id pHost = (__bridge id) SDL_GetPointerProperty (
+            SDL_GetWindowProperties (pParent), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+
+         if (pChild != nil  &&  pHost != nil
+            &&  [pChild respondsToSelector: @selector (orderWindow:relativeTo:)]
+            &&  [pHost respondsToSelector: @selector (windowNumber)])
+         {
+            [pChild orderWindow: NSWindowAbove relativeTo: [pHost windowNumber]];
          }
       }
    }
