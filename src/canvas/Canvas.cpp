@@ -385,8 +385,13 @@ bool CANVAS::FrameSize (int& nWidth, int& nHeight)
       }
    }
 
+#if !defined(RUBIDIUM_PLATFORM_MACOS)
+   // macOS docks the child on the main thread in ApplyChildGeometry.
+   // SDL_SetWindowSize here runs on the compositor thread and AppKit
+   // setFrame:display: from that thread leaves the Metal layer blank.
    if (bResult  &&  m_pWindow)
       SDL_SetWindowSize (m_pWindow, m_nWidth, m_nHeight);
+#endif
 
    return bResult;
 }

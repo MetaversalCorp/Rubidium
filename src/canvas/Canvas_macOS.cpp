@@ -24,11 +24,11 @@ using namespace RUBIDIUM;
 static const char* kMetalLayerProperty = "rubidium.metal.layer";
 
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-// Defined in Canvas_Metal.mm (Objective-C++). Sizes the CAMetalLayer drawable
-// to the docked window and pins its colour space to sRGB. See Canvas_Metal.mm.
+// Defined in Canvas_Metal.mm (Objective-C++). Installs the SDL Metal view as
+// the child window's content view and sizes its drawable. See Canvas_Metal.mm.
 namespace RUBIDIUM
 {
-   void Canvas_SyncMetalDrawable (SDL_Window* pWindow, void* pLayer, int nWidth, int nHeight);
+   void Canvas_InstallMetalView (SDL_Window* pWindow, void* pMetalView, int nWidth, int nHeight);
    void Canvas_SetNativeVisible (SDL_Window* pWindow, bool bVisible);
 }
 #endif
@@ -89,7 +89,7 @@ bool CANVAS_NATIVE::Initialize (void* pParentHandle, int nWidth, int nHeight)
             SDL_PropertiesID nProps = SDL_GetWindowProperties (m_pWindow);
             SDL_SetPointerProperty (nProps, kMetalLayerProperty, pLayer);
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-            Canvas_SyncMetalDrawable (m_pWindow, pLayer, nWidth, nHeight);
+            Canvas_InstallMetalView (m_pWindow, m_pMetalView, nWidth, nHeight);
 #endif
          }
          else m_pLogger->Log (LOGGER::kLOGLEVEL_Warning, "CANVAS", "SDL_Metal_GetLayer returned null");
@@ -117,6 +117,9 @@ void CANVAS_NATIVE::SetVisible (bool bVisible)
          ApplyChildGeometry ();
          Canvas_SetNativeVisible (m_pWindow, true);
          SDL_RaiseWindow (m_pWindow);
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+         Canvas_InstallMetalView (m_pWindow, m_pMetalView, m_nChildW, m_nChildH);
+#endif
       }
       else
       {
@@ -146,9 +149,9 @@ void CANVAS_NATIVE::ApplyChildGeometry ()
       SDL_SetWindowSize (m_pWindow, m_nChildW, m_nChildH);
 
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-      // After the window is mapped and sized. Filament reads drawableSize when
-      // it creates the swapchain, which happens after the first Show.
-      Canvas_SyncMetalDrawable (m_pWindow, NativeWindowHandle (), m_nChildW, m_nChildH);
+      // After the window is mapped and sized. Filament reads the content view's
+      // layer when it creates the swapchain, which happens after the first Show.
+      Canvas_InstallMetalView (m_pWindow, m_pMetalView, m_nChildW, m_nChildH);
 #endif
    }
 }

@@ -2,12 +2,12 @@
 
 // macOS Metal layer configuration.
 //
-// The canvas window is created hidden, and SDL_Metal_CreateView can leave the
-// CAMetalLayer with a 0x0 drawable (or a subview that does not fill the content
-// view). Filament then builds its swapchain against that layer and presents
-// nothing, so the child window stays black while the chrome window keeps
-// drawing. Sync the view's frame and drawableSize once the window is shown and
-// on every dock, before and after the swapchain exists.
+// SDL_Metal_CreateView adds the CAMetalLayer as a subview of SDL's content
+// view, sized with contentView.frame (origin in the frame view, not the
+// content view). That content view paints itself black, and on a Cocoa child
+// window the subview's present never becomes the surface on screen. Install
+// the Metal view as the window's content view, then size its drawable to the
+// docked window, once the window is shown and on every dock.
 //
 // Filament's Metal backend reports isSRGBSwapChainSupported() == false, so it
 // applies the sRGB transfer function in its post-processing pass and writes the
@@ -32,55 +32,50 @@
 
 namespace RUBIDIUM
 {
-   void Canvas_SyncMetalDrawable (SDL_Window* pWindow, void* pLayer, int nWidth, int nHeight)
+   void Canvas_InstallMetalView (SDL_Window* pWindow, void* pMetalView, int nWidth, int nHeight)
    {
-      CAMetalLayer* pMetalLayer = (CAMetalLayer*) pLayer;
+      NSView* pView = (__bridge NSView*) pMetalView;
 
-      if (pMetalLayer != nil  &&  nWidth > 0  &&  nHeight > 0)
+      if (pWindow != nullptr  &&  pView != nil  &&  nWidth > 0  &&  nHeight > 0)
       {
-         if (pWindow)
+         id pCocoa = (__bridge id) SDL_GetPointerProperty (
+            SDL_GetWindowProperties (pWindow), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+
+         if (pCocoa != nil  &&  [pCocoa respondsToSelector: @selector (setContentView:)])
          {
-            id pCocoa = (__bridge id) SDL_GetPointerProperty (
-               SDL_GetWindowProperties (pWindow), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+            if ([pCocoa contentView] != pView)
+               [pCocoa setContentView: pView];
+         }
 
-            if (pCocoa != nil  &&  [pCocoa respondsToSelector: @selector (contentView)])
+         pView.frame = NSMakeRect (0.0, 0.0, (CGFloat) nWidth, (CGFloat) nHeight);
+         pView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+         CAMetalLayer* pMetalLayer = (CAMetalLayer*) pView.layer;
+
+         if (pMetalLayer != nil)
+         {
+            if (pMetalLayer.device == nil)
             {
-               NSView* pContent = [pCocoa contentView];
+               pMetalLayer.opaque = YES;
+               pMetalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 
-               if (pContent != nil)
+               CGColorSpaceRef pColorSpace = CGColorSpaceCreateWithName (kCGColorSpaceSRGB);
+
+               if (pColorSpace != nullptr)
                {
-                  for (NSView* pSubview in pContent.subviews)
-                  {
-                     if (pSubview.layer == pMetalLayer)
-                     {
-                        pSubview.frame = pContent.bounds;
-                        pSubview.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-                        break;
-                     }
-                  }
+                  // CAMetalLayer retains its own copy of the colour space, so the
+                  // local Create reference is released immediately after assignment.
+                  pMetalLayer.colorspace = pColorSpace;
+                  CGColorSpaceRelease (pColorSpace);
                }
             }
+
+            // Non-HiDPI canvas: window points and drawable pixels are one unit.
+            pMetalLayer.contentsScale = 1.0;
+            pMetalLayer.drawableSize = CGSizeMake ((CGFloat) nWidth, (CGFloat) nHeight);
+
+            SDL_SetPointerProperty (SDL_GetWindowProperties (pWindow), "rubidium.metal.layer", (__bridge void*) pMetalLayer);
          }
-
-         if (pMetalLayer.device == nil)
-         {
-            pMetalLayer.opaque = YES;
-            pMetalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-
-            CGColorSpaceRef pColorSpace = CGColorSpaceCreateWithName (kCGColorSpaceSRGB);
-
-            if (pColorSpace != nullptr)
-            {
-               // CAMetalLayer retains its own copy of the colour space, so the
-               // local Create reference is released immediately after assignment.
-               pMetalLayer.colorspace = pColorSpace;
-               CGColorSpaceRelease (pColorSpace);
-            }
-         }
-
-         // Non-HiDPI canvas: window points and drawable pixels are one unit.
-         pMetalLayer.contentsScale = 1.0;
-         pMetalLayer.drawableSize = CGSizeMake ((CGFloat) nWidth, (CGFloat) nHeight);
       }
    }
 
