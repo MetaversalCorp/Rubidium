@@ -24,12 +24,11 @@ using namespace RUBIDIUM;
 static const char* kMetalLayerProperty = "rubidium.metal.layer";
 
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-// Defined in Canvas_Metal.mm (Objective-C++). Pins the CAMetalLayer's colour
-// space to sRGB so Filament's Metal present matches the Windows Vulkan path
-// instead of rendering dark. See Canvas_Metal.mm for the full rationale.
+// Defined in Canvas_Metal.mm (Objective-C++). Sizes the CAMetalLayer drawable
+// to the docked window and pins its colour space to sRGB. See Canvas_Metal.mm.
 namespace RUBIDIUM
 {
-   void Canvas_ConfigureMetalLayer (void* pLayer);
+   void Canvas_SyncMetalDrawable (SDL_Window* pWindow, void* pLayer, int nWidth, int nHeight);
    void Canvas_SetNativeVisible (SDL_Window* pWindow, bool bVisible);
 }
 #endif
@@ -90,7 +89,7 @@ bool CANVAS_NATIVE::Initialize (void* pParentHandle, int nWidth, int nHeight)
             SDL_PropertiesID nProps = SDL_GetWindowProperties (m_pWindow);
             SDL_SetPointerProperty (nProps, kMetalLayerProperty, pLayer);
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-            Canvas_ConfigureMetalLayer (pLayer);
+            Canvas_SyncMetalDrawable (m_pWindow, pLayer, nWidth, nHeight);
 #endif
          }
          else m_pLogger->Log (LOGGER::kLOGLEVEL_Warning, "CANVAS", "SDL_Metal_GetLayer returned null");
@@ -145,6 +144,12 @@ void CANVAS_NATIVE::ApplyChildGeometry ()
 
       SDL_SetWindowPosition (m_pWindow, nParentX + m_nChildX, nParentY + m_nChildY);
       SDL_SetWindowSize (m_pWindow, m_nChildW, m_nChildH);
+
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+      // After the window is mapped and sized. Filament reads drawableSize when
+      // it creates the swapchain, which happens after the first Show.
+      Canvas_SyncMetalDrawable (m_pWindow, NativeWindowHandle (), m_nChildW, m_nChildH);
+#endif
    }
 }
 
