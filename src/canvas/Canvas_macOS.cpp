@@ -2,11 +2,10 @@
 
 // Apple (macOS + iOS) native canvas implementation.
 //
-// macOS: the canvas owns its own borderless SDL Metal window, docked below the
-// chrome strip in screen space. It is not a Cocoa child window: Metal's
-// presentDrawable does not show up in an addChildWindow surface, so the child
-// stays black. Canvas_OrderAbove keeps it above the chrome without activating
-// it. Both the chrome and this canvas are non-HiDPI SDL windows,
+// macOS: Filament's CAMetalLayer is a subview of the chrome window, in the
+// region below the chrome strip. The separate canvas SDL window stays hidden;
+// its backing is black and was covering the present. Both windows are
+// non-HiDPI, so window points equal pixels.
 // so window points equal pixels and the docking geometry stays in one unit.
 // pParentHandle is the chrome's SDL_Window* (APPFRAME_SDL::ParentNativeHandle).
 //
@@ -23,11 +22,11 @@ using namespace RUBIDIUM;
 static const char* kMetalLayerProperty = "rubidium.metal.layer";
 
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-// Defined in Canvas_Metal.mm (Objective-C++). Installs the SDL Metal view as
-// the child window's content view and sizes its drawable. See Canvas_Metal.mm.
+// Defined in Canvas_Metal.mm (Objective-C++). Moves the SDL Metal view onto
+// the chrome window and sizes its drawable. See Canvas_Metal.mm.
 namespace RUBIDIUM
 {
-   void Canvas_InstallMetalView (SDL_Window* pWindow, void* pMetalView, int nWidth, int nHeight);
+   void Canvas_InstallMetalView (SDL_Window* pWindow, SDL_Window* pParent, void* pMetalView, int nX, int nY, int nWidth, int nHeight);
    void Canvas_OrderAbove (SDL_Window* pWindow, SDL_Window* pParent);
    void Canvas_SetNativeVisible (SDL_Window* pWindow, bool bVisible);
 }
@@ -78,7 +77,7 @@ bool CANVAS_NATIVE::Initialize (void* pParentHandle, int nWidth, int nHeight)
             SDL_PropertiesID nProps = SDL_GetWindowProperties (m_pWindow);
             SDL_SetPointerProperty (nProps, kMetalLayerProperty, pLayer);
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-            Canvas_InstallMetalView (m_pWindow, m_pMetalView, nWidth, nHeight);
+            Canvas_InstallMetalView (m_pWindow, m_pParentWindow, m_pMetalView, 0, 0, nWidth, nHeight);
 #endif
          }
          else m_pLogger->Log (LOGGER::kLOGLEVEL_Warning, "CANVAS", "SDL_Metal_GetLayer returned null");
@@ -99,13 +98,16 @@ void CANVAS_NATIVE::SetVisible (bool bVisible)
    {
       if (bVisible)
       {
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+         // The layer lives in the chrome window. Showing this window paints
+         // a black rectangle over that present.
+         ApplyChildGeometry ();
+         Canvas_SetNativeVisible (m_pWindow, false);
+         SDL_HideWindow (m_pWindow);
+#else
          SDL_ShowWindow (m_pWindow);
          ApplyChildGeometry ();
          Canvas_SetNativeVisible (m_pWindow, true);
-#if defined(RUBIDIUM_PLATFORM_MACOS)
-         Canvas_InstallMetalView (m_pWindow, m_pMetalView, m_nChildW, m_nChildH);
-         Canvas_OrderAbove (m_pWindow, m_pParentWindow);
-#else
          SDL_RaiseWindow (m_pWindow);
 #endif
       }
@@ -135,10 +137,9 @@ void CANVAS_NATIVE::ApplyChildGeometry ()
       SDL_SetWindowSize (m_pWindow, m_nChildW, m_nChildH);
 
 #if defined(RUBIDIUM_PLATFORM_MACOS)
-      // After the window is mapped and sized. Filament reads the content view's
-      // layer when it creates the swapchain, which happens after the first Show.
-      Canvas_InstallMetalView (m_pWindow, m_pMetalView, m_nChildW, m_nChildH);
-      Canvas_OrderAbove (m_pWindow, m_pParentWindow);
+      // Filament reads rubidium.metal.layer when it creates the swapchain,
+      // which happens after the first Show.
+      Canvas_InstallMetalView (m_pWindow, m_pParentWindow, m_pMetalView, m_nChildX, m_nChildY, m_nChildW, m_nChildH);
 #endif
    }
 }

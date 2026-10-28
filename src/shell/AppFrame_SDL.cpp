@@ -41,8 +41,8 @@ bool APPFRAME_SDL::Initialize (int nWidth, int nHeight, const char* sTitle, SNEE
 #if defined(RUBIDIUM_PLATFORM_LINUX) || defined(RUBIDIUM_PLATFORM_MACOS)
    // Desktop chrome (tab strip + URL bar) in its own SDL/RmlUi window. Each
    // tab's Filament canvas is docked below ChromeHeight(). On Linux the canvas
-   // is reparented with XReparentWindow. On macOS it is a separate borderless
-   // window (a Cocoa child window does not show a Metal present). See CANVAS_NATIVE.
+   // is reparented with XReparentWindow. On macOS the Metal view is a subview
+   // of this chrome window. See CANVAS_NATIVE.
    m_pChrome = new CHROME_RML ();
    if (m_pChrome->Initialize (sTitle, nWidth, nHeight, this))
    {

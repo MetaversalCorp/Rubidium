@@ -5,13 +5,11 @@
 
 // macOS native canvas implementation.
 //
-// The canvas owns its own borderless SDL Metal window, docked in screen space
-// below the chrome strip. It is not a Cocoa child window: Metal's present does
-// not show up through addChildWindow. Canvas_OrderAbove keeps it above the
-// chrome without activating it, and the frame re-docks it when the chrome
-// finishes a move. Creates an SDL Metal view to provide the CAMetalLayer that
-// Filament's Metal backend requires. This file is compiled on macOS only;
-// CMake marks it HEADER_FILE_ONLY on other platforms.
+// The Filament CAMetalLayer is a subview of the chrome window, placed below
+// the chrome strip. The canvas SDL window stays hidden so its black backing
+// cannot cover that present. The frame re-docks the view when the chrome
+// moves or resizes. This file is compiled on macOS only; CMake marks it
+// HEADER_FILE_ONLY on other platforms.
 
 struct SDL_Window;
 

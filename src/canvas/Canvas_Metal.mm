@@ -2,13 +2,11 @@
 
 // macOS Metal layer configuration.
 //
-// SDL_Metal_CreateView adds the CAMetalLayer as a subview of SDL's content
-// view, sized with contentView.frame (origin in the frame view, not the
-// content view). That content view paints itself black. Install the Metal
-// view as the window's content view, then size its drawable to the docked
-// window, once the window is shown and on every dock. The canvas is a
-// top-level window: order it above the chrome without making it key, because
-// a Cocoa child window never shows a Metal present.
+// The red-clear test showed Filament presenting to a layer that is not the
+// window on screen. The canvas window's own backing stays black. Move the
+// SDL Metal view onto the chrome window, which is the window the user sees,
+// into the region below the chrome strip. AppKit's origin is the bottom-left,
+// so that region starts at y = 0. The canvas SDL window is then hidden.
 //
 // Filament's Metal backend reports isSRGBSwapChainSupported() == false, so it
 // applies the sRGB transfer function in its post-processing pass and writes the
@@ -33,23 +31,35 @@
 
 namespace RUBIDIUM
 {
-   void Canvas_InstallMetalView (SDL_Window* pWindow, void* pMetalView, int nWidth, int nHeight)
+   void Canvas_InstallMetalView (SDL_Window* pWindow, SDL_Window* pParent, void* pMetalView, int nX, int nY, int nWidth, int nHeight)
    {
       NSView* pView = (__bridge NSView*) pMetalView;
 
       if (pWindow != nullptr  &&  pView != nil  &&  nWidth > 0  &&  nHeight > 0)
       {
+         SDL_Window* pHost = pParent != nullptr ? pParent : pWindow;
          id pCocoa = (__bridge id) SDL_GetPointerProperty (
-            SDL_GetWindowProperties (pWindow), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
+            SDL_GetWindowProperties (pHost), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, nullptr);
 
-         if (pCocoa != nil  &&  [pCocoa respondsToSelector: @selector (setContentView:)])
+         if (pCocoa != nil  &&  [pCocoa respondsToSelector: @selector (contentView)])
          {
-            if ([pCocoa contentView] != pView)
-               [pCocoa setContentView: pView];
-         }
+            NSView* pContent = [pCocoa contentView];
 
-         pView.frame = NSMakeRect (0.0, 0.0, (CGFloat) nWidth, (CGFloat) nHeight);
-         pView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+            if (pContent != nil)
+            {
+               int nHostH = 0;
+               SDL_GetWindowSize (pHost, nullptr, &nHostH);
+
+               // nY is the SDL top-left offset. AppKit's y grows upward.
+               CGFloat nFrameY = (CGFloat) nHostH - (CGFloat) nY - (CGFloat) nHeight;
+               if (nFrameY < 0.0)
+                  nFrameY = 0.0;
+
+               pView.frame = NSMakeRect ((CGFloat) nX, nFrameY, (CGFloat) nWidth, (CGFloat) nHeight);
+               pView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+               [pContent addSubview: pView positioned: NSWindowAbove relativeTo: nil];
+            }
+         }
 
          CAMetalLayer* pMetalLayer = (CAMetalLayer*) pView.layer;
 
