@@ -74,6 +74,14 @@ public:
    void DismissChromeMenuIfClickOutside (SDL_Event& Event);
 #endif
 
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+   // macOS: the Filament Metal view is a subview of the chrome window, so mouse
+   // events over the 3D viewport arrive with the chrome window's ID. Forward
+   // the ones below the chrome strip to the active tab's canvas. Returns true
+   // when the event was consumed and must not also reach chrome RmlUi.
+   bool RouteViewportMouse (SDL_Event& Event);
+#endif
+
 protected:
    void FrameTabAdd    ();
    void FrameTabClose  (int nTabIx);
@@ -99,6 +107,13 @@ protected:
    // Previous frame's canvas mouse-button state, for the rising-edge test that
    // releases address-bar focus on the first click into the 3D view.
    bool                      m_bCanvasMouseDown;
+
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+   // macOS: true while a button pressed in the viewport is still held, so a
+   // drag that moves up over the chrome keeps feeding the canvas (SDL captures
+   // the pointer to the chrome window on button-down).
+   bool                      m_bCanvasCapture;
+#endif
 };
 
 } // namespace RUBIDIUM

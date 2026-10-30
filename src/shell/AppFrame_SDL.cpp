@@ -22,6 +22,9 @@ APPFRAME_SDL::APPFRAME_SDL (IAPPWINDOW* pController, SNEEZE::ENGINE* pSneeze, LO
    m_eSession (SNEEZE::CONTEXT::kSESSION_PERSISTENT),
    m_bOpen (false),
    m_bCanvasMouseDown (false)
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+   , m_bCanvasCapture (false)
+#endif
 {
    for (int nTab = 0; nTab < TAB_MAX_COUNT; nTab++)
       m_apTab[nTab] = nullptr;
@@ -507,6 +510,58 @@ void APPFRAME_SDL::DismissChromeMenuIfClickOutside (SDL_Event& Event)
        && pClickWindow != m_pChrome->UrlDropWindow ())
          m_pChrome->DismissUrlDrop ();
    }
+}
+#endif
+
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+bool APPFRAME_SDL::RouteViewportMouse (SDL_Event& Event)
+{
+   bool bConsumed = false;
+
+   if (m_pChrome  &&  m_pWindow  &&  m_nTabIx_Active >= 0)
+   {
+      SDL_WindowID nEventID  = 0;
+      float        dPointerY = -1.0f;
+      bool         bMouse    = true;
+
+      switch (Event.type)
+      {
+         case SDL_EVENT_MOUSE_MOTION:      nEventID = Event.motion.windowID; dPointerY = Event.motion.y;      break;
+         case SDL_EVENT_MOUSE_BUTTON_DOWN:
+         case SDL_EVENT_MOUSE_BUTTON_UP:   nEventID = Event.button.windowID; dPointerY = Event.button.y;      break;
+         case SDL_EVENT_MOUSE_WHEEL:       nEventID = Event.wheel.windowID;  dPointerY = Event.wheel.mouse_y; break;
+         default:                          bMouse   = false;                                                  break;
+      }
+
+      // Only the chrome window's own pointer events are candidates; the canvas
+      // SDL window is hidden and never receives any.
+      if (bMouse  &&  nEventID == SDL_GetWindowID (m_pWindow))
+      {
+         bool bInViewport = (dPointerY >= static_cast<float> (ContentTop ()));
+
+         // A press that begins in the viewport starts a capture so the ensuing
+         // drag keeps feeding the canvas even once the cursor rises into the
+         // chrome strip (SDL captures the pointer to this window on button-down).
+         if (Event.type == SDL_EVENT_MOUSE_BUTTON_DOWN  &&  bInViewport)
+            m_bCanvasCapture = true;
+
+         if (bInViewport  ||  m_bCanvasCapture)
+         {
+            CANVAS* pCanvas = m_apTab[m_nTabIx_Active]->Canvas ();
+
+            if (pCanvas)
+            {
+               pCanvas->HandleEvent (Event);
+               bConsumed = true;
+            }
+         }
+
+         if (Event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+            m_bCanvasCapture = false;
+      }
+   }
+
+   return bConsumed;
 }
 #endif
 

@@ -424,7 +424,22 @@ public:
             for (APPFRAME* pAppFrame : m_apAppFrame)
                static_cast<APPFRAME_SDL*> (pAppFrame)->DismissChromeMenuIfClickOutside (ev);
 #endif
+
+#if defined(RUBIDIUM_PLATFORM_MACOS)
+            // The Metal viewport is a subview of the chrome window, so its mouse
+            // events arrive tagged with the chrome window ID. Forward viewport-
+            // region events to the active tab's canvas; only hand the event to
+            // chrome RmlUi when no canvas consumed it.
+            bool bCanvasConsumed = false;
+            for (APPFRAME* pAppFrame : m_apAppFrame)
+               if (static_cast<APPFRAME_SDL*> (pAppFrame)->RouteViewportMouse (ev))
+                  bCanvasConsumed = true;
+
+            if (!bCanvasConsumed)
+               m_pApp->SDLWindow_Translate (ev);
+#else
             m_pApp->SDLWindow_Translate (ev);
+#endif
          }
 
          while (SDL_PeepEvents (&ev, 1, SDL_GETEVENT, SDL_EVENT_WINDOW_FOCUS_GAINED, SDL_EVENT_WINDOW_FOCUS_LOST) > 0)
