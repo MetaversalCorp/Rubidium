@@ -29,8 +29,6 @@
 
 #include <SDL3/SDL.h>
 
-#include <cstdio>
-
 namespace RUBIDIUM
 {
    void Canvas_InstallMetalView (SDL_Window* pWindow, SDL_Window* pParent, void* pMetalView, int nX, int nY, int nWidth, int nHeight)
@@ -86,19 +84,6 @@ namespace RUBIDIUM
             // Non-HiDPI canvas: window points and drawable pixels are one unit.
             pMetalLayer.contentsScale = 1.0;
             pMetalLayer.drawableSize = CGSizeMake ((CGFloat) nWidth, (CGFloat) nHeight);
-
-            // The draw region is flipped against the drawable height. A drawable
-            // shorter than the view leaves the scene outside the visible clear.
-            std::fprintf (stderr,
-               "canvas drawable=%.0fx%.0f view=%dx%d bounds=%.0fx%.0f scale=%.3f\n",
-               pMetalLayer.drawableSize.width,
-               pMetalLayer.drawableSize.height,
-               nWidth,
-               nHeight,
-               pView.bounds.size.width,
-               pView.bounds.size.height,
-               pMetalLayer.contentsScale);
-            std::fflush (stderr);
 
             SDL_SetPointerProperty (SDL_GetWindowProperties (pWindow), "rubidium.metal.layer", (__bridge void*) pMetalLayer);
          }
