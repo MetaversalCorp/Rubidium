@@ -120,6 +120,7 @@ private:
    bool           m_bPrevPlus;
    bool           m_bPrevMinus;
    bool           m_bPrevSlash;
+   bool           m_bPrevLeft;
 
 #ifdef TEMPORARY_DIGIT_KEYS
    unsigned       m_nDigitsPrev;

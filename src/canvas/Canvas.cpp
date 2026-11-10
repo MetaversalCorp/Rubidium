@@ -21,7 +21,8 @@ CANVAS::CANVAS (LOGGER* pLogger, std::string sName) :
    m_bOwnsWindow (false),
    m_nWidth_Pending (0), m_nHeight_Pending (0),
    m_nChildX (0), m_nChildY (0), m_nChildW (-1), m_nChildH (-1),
-   m_bPrevPlus (false), m_bPrevMinus (false), m_bPrevSlash (false)
+   m_bPrevPlus (false), m_bPrevMinus (false), m_bPrevSlash (false),
+   m_bPrevLeft (false)
 #ifdef TEMPORARY_DIGIT_KEYS
    , m_nDigitsPrev (0)
 #endif
@@ -132,11 +133,15 @@ void CANVAS::HandleEvent (SDL_Event& Event)
          break;
 
       case SDL_EVENT_MOUSE_BUTTON_DOWN:
+         nMouseX = static_cast<int> (Event.button.x);
+         nMouseY = static_cast<int> (Event.button.y);
          if (Event.button.button == SDL_BUTTON_LEFT)  bMouseLeft = true;
          if (Event.button.button == SDL_BUTTON_RIGHT) bMouseRight = true;
          break;
 
       case SDL_EVENT_MOUSE_BUTTON_UP:
+         nMouseX = static_cast<int> (Event.button.x);
+         nMouseY = static_cast<int> (Event.button.y);
          if (Event.button.button == SDL_BUTTON_LEFT)  bMouseLeft = false;
          if (Event.button.button == SDL_BUTTON_RIGHT) bMouseRight = false;
          break;
@@ -277,6 +282,32 @@ void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
    pViewport->Input_Mouse     (nMouseDX, nMouseDY, dScrollY, bMouseLeft, bMouseRight);
    pViewport->Input_Key       (bKeySpace, bKeyPlus, bKeyMinus, bKeyA, bKeyS, bKeyD, bKeyW, bKeyCtrl);
    pViewport->Input_MoveScale (pApp->MovementScale ());
+
+   // Left-button edges become one world ray. Move, press, and release all
+   // share it; the engine hits panels and the orbit camera keeps the rest.
+   {
+      bool bDown = bMouseLeft  &&  !m_bPrevLeft;
+      bool bUp   = !bMouseLeft  &&  m_bPrevLeft;
+      bool bMoved = (nMouseDX != 0  ||  nMouseDY != 0);
+      m_bPrevLeft = bMouseLeft;
+
+      if (bDown  ||  bUp  ||  bMoved)
+      {
+         double dOx, dOy, dOz, dDx, dDy, dDz;
+
+         if (pViewport->Ray_From_Pointer (nMouseX, nMouseY, dOx, dOy, dOz, dDx, dDy, dDz))
+         {
+            if (bDown)
+               pViewport->Input_Ray (dOx, dOy, dOz, dDx, dDy, dDz, SNEEZE::VIEWPORT::kRAY_DOWN);
+
+            if (bUp)
+               pViewport->Input_Ray (dOx, dOy, dOz, dDx, dDy, dDz, SNEEZE::VIEWPORT::kRAY_UP);
+
+            if (!bDown  &&  !bUp)
+               pViewport->Input_Ray (dOx, dOy, dOz, dDx, dDy, dDz, SNEEZE::VIEWPORT::kRAY_MOVE);
+         }
+      }
+   }
 
 #ifdef TEMPORARY_DIGIT_KEYS
    unsigned nDigits = 0;
