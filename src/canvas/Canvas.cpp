@@ -25,6 +25,7 @@ CANVAS::CANVAS (LOGGER* pLogger, std::string sName) :
    m_bPrevLeft (false)
 #ifdef TEMPORARY_DIGIT_KEYS
    , m_nDigitsPrev (0)
+   , m_nKeyPrev (0)
 #endif
 {
 }
@@ -185,6 +186,104 @@ void CANVAS::ApplyMovementKeyEvent (SDL_Event& Event)
    if (Event.key.key == SDLK_W)      bKeyW     = bDown;
    if (Event.key.key == SDLK_LCTRL  ||  Event.key.key == SDLK_RCTRL)       bKeyCtrl  = bDown;
 }
+
+#ifdef TEMPORARY_DIGIT_KEYS
+// Letters are ASCII uppercase. Other bare keys are the unshifted ASCII
+// character (space 32, enter 13, escape 27). Codes 0..9 are never queued:
+// only the digit poll below may produce them. Tab and backspace are not
+// forwarded. bLetterChord is true while Ctrl, Alt, or the Windows key is
+// held, so those chords are not also letters.
+static int BareKeysDown (bool bCaptureKeys, bool bKeyCtrl, unsigned* aDown, int nCap, bool& bLetterChord)
+{
+   int nDown = 0;
+   bLetterChord = false;
+
+   if (!bCaptureKeys || nCap <= 0)
+      return 0;
+
+   auto Note = [&] (unsigned nCode)
+   {
+      for (int i = 0; i < nDown; i++)
+         if (aDown[i] == nCode)
+            return;
+
+      if (nDown < nCap)
+         aDown[nDown++] = nCode;
+   };
+
+#ifdef _WIN32
+   for (int nLetter = 0; nLetter < 26; nLetter++)
+      if ((GetAsyncKeyState ('A' + nLetter) & 0x8000) != 0)
+         Note ((unsigned) ('A' + nLetter));
+
+   static const struct { int nVk; unsigned nCode; } aBare[] =
+   {
+      { VK_SPACE,      ' '  },
+      { VK_RETURN,     '\r' },
+      { VK_ESCAPE,      27  },
+      { VK_OEM_MINUS,  '-'  },
+      { VK_OEM_PLUS,   '='  },
+      { VK_OEM_COMMA,  ','  },
+      { VK_OEM_PERIOD, '.'  },
+      { VK_OEM_1,      ';'  },
+      { VK_OEM_2,      '/'  },
+      { VK_OEM_3,      '`'  },
+      { VK_OEM_4,      '['  },
+      { VK_OEM_5,      '\\' },
+      { VK_OEM_6,      ']'  },
+      { VK_OEM_7,      '\'' },
+   };
+
+   for (const auto& Key : aBare)
+      if ((GetAsyncKeyState (Key.nVk) & 0x8000) != 0)
+         Note (Key.nCode);
+
+   bLetterChord = bKeyCtrl
+      || ((GetAsyncKeyState (VK_MENU) & 0x8000) != 0)
+      || ((GetAsyncKeyState (VK_LWIN) & 0x8000) != 0)
+      || ((GetAsyncKeyState (VK_RWIN) & 0x8000) != 0);
+#else
+   const bool* aKeys = SDL_GetKeyboardState (nullptr);
+
+   if (aKeys)
+   {
+      static_assert (SDL_SCANCODE_Z == SDL_SCANCODE_A + 25, "letter scancodes are contiguous");
+
+      for (int nLetter = 0; nLetter < 26; nLetter++)
+         if (aKeys[SDL_SCANCODE_A + nLetter])
+            Note ((unsigned) ('A' + nLetter));
+
+      static const struct { SDL_Scancode nScan; unsigned nCode; } aBare[] =
+      {
+         { SDL_SCANCODE_SPACE,        ' '  },
+         { SDL_SCANCODE_RETURN,       '\r' },
+         { SDL_SCANCODE_ESCAPE,        27  },
+         { SDL_SCANCODE_MINUS,        '-'  },
+         { SDL_SCANCODE_EQUALS,       '='  },
+         { SDL_SCANCODE_COMMA,        ','  },
+         { SDL_SCANCODE_PERIOD,       '.'  },
+         { SDL_SCANCODE_SLASH,        '/'  },
+         { SDL_SCANCODE_SEMICOLON,    ';'  },
+         { SDL_SCANCODE_APOSTROPHE,   '\'' },
+         { SDL_SCANCODE_LEFTBRACKET,  '['  },
+         { SDL_SCANCODE_RIGHTBRACKET, ']'  },
+         { SDL_SCANCODE_BACKSLASH,    '\\' },
+         { SDL_SCANCODE_GRAVE,        '`'  },
+      };
+
+      for (const auto& Key : aBare)
+         if (aKeys[Key.nScan])
+            Note (Key.nCode);
+
+      bLetterChord = bKeyCtrl
+         || aKeys[SDL_SCANCODE_LALT] || aKeys[SDL_SCANCODE_RALT]
+         || aKeys[SDL_SCANCODE_LGUI] || aKeys[SDL_SCANCODE_RGUI];
+   }
+#endif
+
+   return nDown;
+}
+#endif
 
 void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
 {
@@ -350,6 +449,29 @@ void CANVAS::ProcessInput (SNEEZE::VIEWPORT* pViewport)
 
    if (nPressed)
       pViewport->Input_Digit (nPressed);
+
+   unsigned aDown[32];
+   bool bLetterChord = false;
+   int nDown = BareKeysDown (bCaptureKeys, bKeyCtrl, aDown, 32, bLetterChord);
+
+   for (int i = 0; i < nDown; i++)
+   {
+      bool bWas = false;
+
+      for (int j = 0; j < m_nKeyPrev; j++)
+         if (m_aKeyPrev[j] == aDown[i])
+            bWas = true;
+
+      bool bLetter = aDown[i] >= 'A' && aDown[i] <= 'Z';
+
+      if (!bWas && !(bLetterChord && bLetter))
+         pViewport->Input_KeyEdge (aDown[i]);
+   }
+
+   m_nKeyPrev = nDown;
+
+   for (int i = 0; i < nDown; i++)
+      m_aKeyPrev[i] = aDown[i];
 #endif
 
    nMouseDX = 0;

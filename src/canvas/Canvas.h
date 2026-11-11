@@ -124,6 +124,8 @@ private:
 
 #ifdef TEMPORARY_DIGIT_KEYS
    unsigned       m_nDigitsPrev;
+   unsigned       m_aKeyPrev[32];
+   int            m_nKeyPrev;
 #endif
 };
 
