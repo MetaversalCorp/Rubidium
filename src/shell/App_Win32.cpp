@@ -137,6 +137,8 @@ public:
 
       bool bLoaded = true;
 
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       for (const char* sFile : asFontFiles)
       {
          std::string sPath = sFontsDir + sFile;

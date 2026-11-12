@@ -67,6 +67,8 @@ public:
    {
       if (m_pSDLWindow  &&  m_pSDLRenderer  &&  m_pRmlContext)
       {
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
          // The window carries SDL_WINDOW_HIGH_PIXEL_DENSITY and the context is
          // sized in SDL points (see Render), so the physical resolution is
          // absorbed entirely by the render scale -- one point covers
@@ -229,7 +231,15 @@ public:
             break;
       }
 
-      RmlSDL::InputEventHandler (m_pRmlContext, m_pSDLWindow, Event);
+      // Event listeners run inside this dispatch and edit the DOM, which
+      // allocates from RmlUi's process-global pools -- the same pools the
+      // compositor thread uses for in-world panels. Listeners must not call
+      // anything that waits on the compositor or takes CONTEXT::Live_Lock
+      // (the compositor holds Live while it waits for this lock).
+      {
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+         RmlSDL::InputEventHandler (m_pRmlContext, m_pSDLWindow, Event);
+      }
       m_bNeedsRender = true;
 
       Render ();
@@ -533,6 +543,8 @@ public:
 
       if (m_pRmlContext)
       {
+         SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
          m_pRmlDocument = m_pRmlContext->LoadDocumentFromMemory (sRmlDocument);
 
          if (m_pRmlDocument)

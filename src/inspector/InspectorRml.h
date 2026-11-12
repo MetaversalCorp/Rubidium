@@ -92,6 +92,8 @@ namespace RUBIDIUM
       void ProcessPendingFiles ();
 
    private:
+      void ApplyPending ();
+
       class Impl;
       Impl* m_pImpl;
    };

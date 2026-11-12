@@ -525,6 +525,8 @@ span.tick
 
    bool Initialize ()
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       bool   bResult = false;
       size_t nPos;
 
@@ -615,6 +617,8 @@ span.tick
    // Point the slider at the current stored movement-speed position.
    void RefreshSpeedSlider ()
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       if (m_pSpeedInput)
          m_pSpeedInput->SetAttribute ("value", APPNATIVE::GetInstance ()->MovementSpeedPosition ());
    }

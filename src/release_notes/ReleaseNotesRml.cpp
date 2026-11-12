@@ -628,6 +628,8 @@ div#btn-close:hover
 
    bool Initialize (const std::string& sVersion, const std::string& sMarkdown)
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       bool bResult = false;
 
       if (m_Window.Initialize ("Release Notes", 1024, 720))

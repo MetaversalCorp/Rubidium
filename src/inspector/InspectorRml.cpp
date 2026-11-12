@@ -211,6 +211,8 @@ R"rml(
 
    bool Initialize ()
    {
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
       bool bResult = false;
       size_t nPos;
 
@@ -266,6 +268,10 @@ R"rml(
          delete m_pPreview3D;
          m_pPreview3D = nullptr;
       }
+
+      // After the preview: its Context_Close waits on the compositor, which
+      // may be waiting for this lock.
+      SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
 
       if (m_Window.Document ())
          m_Window.Document ()->RemoveEventListener (Rml::EventId::Keydown, this);
@@ -477,22 +483,28 @@ R"rml(
             int nW = 0;
             int nH = 0;
 
-            if (!PreviewDockRect (pElement, pPreview->Container (), pContext, nX, nY, nW, nH))
+            // Measure under the lock; the PREVIEW3D calls below stay outside it
+            // because Show / Hide wait on the compositor.
             {
-               m_Window.Render ();
-               PreviewDockRect (pElement, pPreview->Container (), pContext, nX, nY, nW, nH);
-            }
+               SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
 
-            // Clamp to the inspector's client rect so a partly-scrolled pane
-            // doesn't let the child window spill past the window edges.
-            if (pContext)
-            {
-               Rml::Vector2i vDim = pContext->GetDimensions ();
+               if (!PreviewDockRect (pElement, pPreview->Container (), pContext, nX, nY, nW, nH))
+               {
+                  m_Window.Render ();
+                  PreviewDockRect (pElement, pPreview->Container (), pContext, nX, nY, nW, nH);
+               }
 
-               if (nX < 0)            { nW += nX; nX = 0; }
-               if (nY < 0)            { nH += nY; nY = 0; }
-               if (nX + nW > vDim.x)  { nW = vDim.x - nX; }
-               if (nY + nH > vDim.y)  { nH = vDim.y - nY; }
+               // Clamp to the inspector's client rect so a partly-scrolled pane
+               // doesn't let the child window spill past the window edges.
+               if (pContext)
+               {
+                  Rml::Vector2i vDim = pContext->GetDimensions ();
+
+                  if (nX < 0)            { nW += nX; nX = 0; }
+                  if (nY < 0)            { nH += nY; nY = 0; }
+                  if (nX + nW > vDim.x)  { nW = vDim.x - nX; }
+                  if (nY + nH > vDim.y)  { nH = vDim.y - nY; }
+               }
             }
 
             if (nW >= 8  &&  nH >= 8)
@@ -664,6 +676,8 @@ void INSPECTOR_RML::Toggle ()            {        m_pImpl->m_Window.Show ();    
 
 void INSPECTOR_RML::SetContext (SNEEZE::CONTEXT* pContext)
 {
+   SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
    m_pImpl->m_pContext = pContext;
 
    if (m_pImpl->m_apTab[Impl::kTAB_NETWORK]  &&  m_pImpl->m_apTab[Impl::kTAB_NETWORK]->Panel ())
@@ -707,6 +721,8 @@ void INSPECTOR_RML::SetContext (SNEEZE::CONTEXT* pContext)
 
 void INSPECTOR_RML::SetScene (SNEEZE::SCENE* pScene)
 {
+   SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
+
    m_pImpl->m_pScene = pScene;
 
    if (IW_ELEMENTS_TREE* pTree = m_pImpl->ElementsTree ())
@@ -733,6 +749,8 @@ void INSPECTOR_RML::Reset ()
       m_pImpl->m_aSiloDeleted.clear ();
       m_pImpl->m_aSiloChanged.clear ();
    }
+
+   SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
 
    // Network panel: detach the pinned detail file, empty the list + origins,
    // and reset the origin filter and status bar.
@@ -902,6 +920,15 @@ void INSPECTOR_RML::OnStorageUnitChanged (SNEEZE::SILO* pSilo, SNEEZE::eSILO_SCO
 
 void INSPECTOR_RML::ProcessPendingFiles ()
 {
+   ApplyPending ();
+
+   // Drive the live glb preview window (show / dock / hide) once per frame.
+   // Outside ApplyPending's lock: PREVIEW3D waits on the compositor.
+   m_pImpl->UpdatePreview3D ();
+}
+
+void INSPECTOR_RML::ApplyPending ()
+{
    std::vector<SNEEZE::FILE*> aCreated;
    std::vector<SNEEZE::FILE*> aChanged;
    std::vector<SNEEZE::FILE*> aDeleted;
@@ -922,6 +949,10 @@ void INSPECTOR_RML::ProcessPendingFiles ()
       aSiloDeleted.swap (m_pImpl->m_aSiloDeleted);
       aSiloChanged.swap (m_pImpl->m_aSiloChanged);
    }
+
+   // Every branch below edits the DOM. The Elements rebuild alone replaces
+   // the whole tree every ~30 ticks.
+   SNEEZE::ENGINE::UI_GUARD uiGuard;   // serialize process-global RmlUi access
 
    if (aCreated.empty () == false || aChanged.empty () == false || aDeleted.empty () == false)
    {
@@ -1048,7 +1079,4 @@ void INSPECTOR_RML::ProcessPendingFiles ()
    }
 
    m_pImpl->m_bElementsWasVisible = bVisible;
-
-   // Drive the live glb preview window (show / dock / hide) once per frame.
-   m_pImpl->UpdatePreview3D ();
 }
